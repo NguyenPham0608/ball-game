@@ -464,6 +464,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
         import * as CANNON from 'cannon-es';
 
         // Game State
@@ -521,19 +522,24 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xf5f5f7);
 
-        // Environment map / Skybox
-        const cubeTextureLoader = new THREE.CubeTextureLoader();
-        const envMap = cubeTextureLoader.load([
-            'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
-            'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
-            'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
-            'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
-            'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
-            'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
-        ]);
+        // Environment map for reflections
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.load('golf.hdr', (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture;
 
-        scene.background = envMap;
-        scene.environment = envMap;
+            // Create a large sphere for the sky that you can move through
+            const skyGeometry = new THREE.SphereGeometry(200, 64, 64);
+            const skyMaterial = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.BackSide
+            });
+            const skySphere = new THREE.Mesh(skyGeometry, skyMaterial);
+            scene.add(skySphere);
+        });
+
+        // Remove the static background
+        scene.background = null;
 
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 15, 25);
@@ -705,11 +711,12 @@
             bowlMesh.receiveShadow = true;
             bowlGroup.add(bowlMesh);
 
-            // Bowl bottom
+            // Bowl bottom - thin disc raised slightly to avoid z-fighting
             const bottomGeometry = new THREE.CircleGeometry(1.5, 32);
             const bottomMesh = new THREE.Mesh(bottomGeometry, bowlMaterialThree);
             bottomMesh.rotation.x = -Math.PI / 2;
-            bottomMesh.position.y = -0.75;
+            bottomMesh.position.y = -0.73;
+            bottomMesh.renderOrder = 1;
             bowlGroup.add(bottomMesh);
 
             // Glow ring
@@ -721,7 +728,8 @@
             bowlGroup.add(ring);
 
             // Position bowl so it sits on the ground
-            bowlPosition.set(0, -11.25, 0);
+            // Position bowl so it sits on the ground (raised slightly to avoid z-fighting)
+            bowlPosition.set(0, -11.1, 0);
             bowlGroup.position.copy(bowlPosition);
             scene.add(bowlGroup);
             bowl = bowlGroup;
