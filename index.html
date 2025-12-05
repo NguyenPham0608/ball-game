@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ball Drop - Guide the Ball</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #f5f5f7;
+            --bg-secondary: #ffffff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --accent-blue: #0071e3;
+            --accent-green: #34c759;
+            --accent-orange: #ff9500;
+            --accent-pink: #ff2d55;
+            --accent-purple: #af52de;
+            --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.08);
+            --shadow-medium: 0 8px 30px rgba(0, 0, 0, 0.12);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI Overlay */
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .ui-overlay>* {
+            pointer-events: auto;
+        }
+
+        /* Header */
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: var(--bg-secondary);
+            padding: 12px 24px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .stars-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 18px;
+            color: var(--text-primary);
+        }
+
+        .stars-display svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--accent-orange);
+        }
+
+        .level-display {
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: var(--bg-secondary);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .tool-btn {
+            width: 52px;
+            height: 52px;
+            border: none;
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .tool-btn:hover {
+            background: #e8e8ed;
+            transform: scale(1.05);
+        }
+
+        .tool-btn.active {
+            background: var(--accent-blue);
+            box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3);
+        }
+
+        .tool-btn.active svg {
+            stroke: white;
+        }
+
+        .tool-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--text-primary);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .tool-btn .tooltip {
+            position: absolute;
+            left: 60px;
+            background: var(--text-primary);
+            color: white;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .tool-btn:hover .tooltip {
+            opacity: 1;
+        }
+
+        /* Action buttons */
+        .actions {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: var(--bg-secondary);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .action-btn {
+            width: 52px;
+            height: 52px;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .action-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .action-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .btn-play {
+            background: var(--accent-green);
+        }
+
+        .btn-play svg {
+            stroke: white;
+            fill: white;
+        }
+
+        .btn-reset {
+            background: var(--accent-orange);
+        }
+
+        .btn-reset svg {
+            stroke: white;
+        }
+
+        .btn-clear {
+            background: var(--accent-pink);
+        }
+
+        .btn-clear svg {
+            stroke: white;
+        }
+
+        .btn-camera {
+            background: var(--accent-purple);
+        }
+
+        .btn-camera svg {
+            stroke: white;
+        }
+
+        /* Instructions */
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-secondary);
+            padding: 12px 24px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: center;
+            max-width: 90%;
+        }
+
+        .instructions strong {
+            color: var(--text-primary);
+        }
+
+        /* Win Modal */
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            padding: 40px 60px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-medium);
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal h2 {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .modal p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .modal-stars {
+            font-size: 48px;
+            margin-bottom: 24px;
+        }
+
+        .modal-btn {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .modal-btn:hover {
+            background: #0077ed;
+            transform: scale(1.05);
+        }
+
+        /* Star collect animation */
+        .star-popup {
+            position: absolute;
+            font-size: 24px;
+            pointer-events: none;
+            animation: starFloat 1s ease-out forwards;
+        }
+
+        @keyframes starFloat {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translateY(-60px) scale(1.5);
+            }
+        }
+
+        /* Preview ramp */
+        .preview-info {
+            position: absolute;
+            bottom: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .preview-info.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="game-container">
+        <div class="ui-overlay">
+            <!-- Header -->
+            <div class="header">
+                <div class="stars-display">
+                    <svg viewBox="0 0 24 24">
+                        <polygon
+                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                    <span id="star-count">0 / 5</span>
+                </div>
+                <div class="level-display" id="level-display">Level 1</div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <button class="tool-btn active" data-tool="ramp">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 20L21 4M3 20h18M3 20V4" />
+                    </svg>
+                    <span class="tooltip">Ramp (drag to place)</span>
+                </button>
+            </div>
+
+            <!-- Actions -->
+            <div class="actions">
+                <button class="action-btn btn-play" id="btn-play" title="Drop Ball">
+                    <svg viewBox="0 0 24 24">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-reset" id="btn-reset" title="Reset Ball">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M1 4v6h6M23 20v-6h-6" />
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-clear" id="btn-clear" title="Clear All Ramps">
+                    <svg viewBox="0 0 24 24">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-camera" id="btn-camera" title="Reset Camera">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions">
+                <strong>Click and drag</strong> to place ramps • <strong>Scroll</strong> to zoom •
+                <strong>Right-drag</strong> to rotate view • Collect all ⭐ and guide the ball to the bowl!
+            </div>
+
+            <!-- Preview info -->
+            <div class="preview-info" id="preview-info">
+                Drag to set angle • Release to place
+            </div>
+
+            <!-- Win Modal -->
+            <div class="modal-overlay" id="win-modal">
+                <div class="modal">
+                    <h2>🎉 Level Complete!</h2>
+                    <p>You collected all the stars!</p>
+                    <div class="modal-stars" id="modal-stars">⭐⭐⭐⭐⭐</div>
+                    <button class="modal-btn" id="btn-next">Next Level</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/+esm"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as CANNON from 'cannon-es';
+
+        // Game State
+        const gameState = {
+            stars: 0,
+            totalStars: 5,
+            level: 1,
+            isPlaying: false,
+            currentTool: 'ramp',
+            placedObjects: [],
+            starObjects: [],
+            isDragging: false,
+            dragStart: null,
+            dragEnd: null
+        };
+
+        // Audio setup for collision sounds
+        const collisionSound = new Audio('knock2.wav');
+        collisionSound.volume = 0.5;
+        let lastCollisionTime = 0;
+        const collisionCooldown = 50; // ms between sounds to prevent spam
+
+        // Camera follow state
+        let isFollowing = false;
+        let orbitAngle = 0;
+        const orbitSpeed = 0.5;
+        const followDistance = 10;
+        const followLerp = 0.05;
+        const zoomLerp = 0.03;
+
+        let cameraTargetPos = null;
+        let cameraLookTarget = null;
+        let isTransitioningToFollow = false;
+
+        // Ground contact tracking
+        let groundContactTime = 0;
+        const groundResetDelay = 3000; // 3 seconds in ms
+
+        function playCollisionSound(impactVelocity) {
+            const now = Date.now();
+            if (now - lastCollisionTime < collisionCooldown) return;
+            if (impactVelocity < 2) return; // Only play for meaningful impacts
+
+            lastCollisionTime = now;
+
+            // Clone the audio for overlapping sounds
+            const sound = collisionSound.cloneNode();
+            // Scale volume based on impact strength (0.2 to 0.8)
+            sound.volume = Math.min(0.8, Math.max(0.2, impactVelocity / 15));
+            sound.play().catch(() => { }); // Ignore autoplay errors
+        }
+
+        // Three.js Setup
+        const container = document.getElementById('game-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf5f5f7);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.insertBefore(renderer.domElement, container.firstChild);
+
+        // Orbit Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 50;
+        controls.maxPolarAngle = Math.PI / 2.1;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(10, 20, 10);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 50;
+        directionalLight.shadow.camera.left = -20;
+        directionalLight.shadow.camera.right = 20;
+        directionalLight.shadow.camera.top = 20;
+        directionalLight.shadow.camera.bottom = -20;
+        scene.add(directionalLight);
+
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-5, 10, -5);
+        scene.add(fillLight);
+
+        // Cannon.js Physics World
+        const world = new CANNON.World();
+        world.gravity.set(0, -15, 0);
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 10;
+
+        // Materials
+        const ballMaterial = new CANNON.Material('ball');
+        const groundMaterial = new CANNON.Material('ground');
+        const rampMaterial = new CANNON.Material('ramp');
+
+        const ballGroundContact = new CANNON.ContactMaterial(ballMaterial, groundMaterial, {
+            friction: 0.3,
+            restitution: 0.4
+        });
+        const ballRampContact = new CANNON.ContactMaterial(ballMaterial, rampMaterial, {
+            friction: 0.2,
+            restitution: 0.3
+        });
+        world.addContactMaterial(ballGroundContact);
+        world.addContactMaterial(ballRampContact);
+
+        // Ground plane (invisible, just for physics)
+        const groundShape = new CANNON.Plane();
+        const groundBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+        groundBody.addShape(groundShape);
+        groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+        groundBody.position.y = -12;
+        world.addBody(groundBody);
+
+        // Visual ground
+        const groundGeometry = new THREE.PlaneGeometry(40, 40);
+        const groundMaterialThree = new THREE.MeshStandardMaterial({
+            color: 0xe8e8ed,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const groundMesh = new THREE.Mesh(groundGeometry, groundMaterialThree);
+        groundMesh.rotation.x = -Math.PI / 2;
+        groundMesh.position.y = -12;
+        groundMesh.receiveShadow = true;
+        scene.add(groundMesh);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(40, 40, 0xcccccc, 0xe0e0e0);
+        gridHelper.position.y = -11.99;
+        scene.add(gridHelper);
+
+        // Ball
+        let ball, ballBody;
+        const ballRadius = 0.5;
+        const ballStartPosition = new THREE.Vector3(0, 12, 0);
+
+        function createBall() {
+            // Remove existing ball
+            if (ball) scene.remove(ball);
+            if (ballBody) world.removeBody(ballBody);
+
+            // Three.js ball
+            const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32);
+            const ballMaterialThree = new THREE.MeshStandardMaterial({
+                color: 0x0071e3,
+                roughness: 0.2,
+                metalness: 0.3
+            });
+            ball = new THREE.Mesh(ballGeometry, ballMaterialThree);
+            ball.castShadow = true;
+            ball.position.copy(ballStartPosition);
+            scene.add(ball);
+
+            // Cannon.js ball
+            const ballShape = new CANNON.Sphere(ballRadius);
+            ballBody = new CANNON.Body({
+                mass: 1,
+                material: ballMaterial,
+                linearDamping: 0.1,
+                angularDamping: 0.3
+            });
+            ballBody.addShape(ballShape);
+            ballBody.position.copy(ballStartPosition);
+            world.addBody(ballBody);
+
+            // Start frozen
+            ballBody.type = CANNON.Body.STATIC;
+            // Listen for collisions
+            ballBody.addEventListener('collide', (event) => {
+                const impactVelocity = event.contact.getImpactVelocityAlongNormal();
+                playCollisionSound(Math.abs(impactVelocity));
+            });
+        }
+
+        // Bowl (target)
+        let bowl, bowlBody;
+        const bowlPosition = new THREE.Vector3(0, -11.5, 0);
+
+        function createBowl() {
+            // Visual bowl
+            const bowlGroup = new THREE.Group();
+
+            // Outer bowl shape
+            const bowlGeometry = new THREE.CylinderGeometry(2.5, 1.5, 1.5, 32, 1, true);
+            const bowlMaterialThree = new THREE.MeshStandardMaterial({
+                color: 0x34c759,
+                roughness: 0.3,
+                metalness: 0.4,
+                side: THREE.DoubleSide
+            });
+            const bowlMesh = new THREE.Mesh(bowlGeometry, bowlMaterialThree);
+            bowlMesh.castShadow = true;
+            bowlMesh.receiveShadow = true;
+            bowlGroup.add(bowlMesh);
+
+            // Bowl bottom
+            const bottomGeometry = new THREE.CircleGeometry(1.5, 32);
+            const bottomMesh = new THREE.Mesh(bottomGeometry, bowlMaterialThree);
+            bottomMesh.rotation.x = -Math.PI / 2;
+            bottomMesh.position.y = -0.75;
+            bowlGroup.add(bottomMesh);
+
+            // Glow ring
+            const ringGeometry = new THREE.TorusGeometry(2.5, 0.08, 16, 100);
+            const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x34c759 });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.75;
+            bowlGroup.add(ring);
+
+            bowlGroup.position.copy(bowlPosition);
+            scene.add(bowlGroup);
+            bowl = bowlGroup;
+
+            // Physics body (sensor)
+            const bowlShape = new CANNON.Cylinder(2.5, 1.5, 1.5, 16);
+            bowlBody = new CANNON.Body({ mass: 0, isTrigger: true });
+            bowlBody.addShape(bowlShape);
+            bowlBody.position.copy(bowlPosition);
+            world.addBody(bowlBody);
+        }
+
+        // Stars
+        function createStars() {
+            // Clear existing stars
+            gameState.starObjects.forEach(obj => {
+                scene.remove(obj.mesh);
+                if (obj.body) world.removeBody(obj.body);
+            });
+            gameState.starObjects = [];
+            gameState.stars = 0;
+            updateStarDisplay();
+
+            // Star positions for level
+            const starPositions = [
+                new THREE.Vector3(-5, 8, 0),
+                new THREE.Vector3(5, 6, 0),
+                new THREE.Vector3(-3, 2, 0),
+                new THREE.Vector3(4, -2, 0),
+                new THREE.Vector3(0, -6, 0)
+            ];
+
+            // Vary positions slightly based on level
+            starPositions.forEach((pos, i) => {
+                pos.x += (gameState.level - 1) * (i % 2 === 0 ? 1 : -1);
+                pos.y += Math.sin(gameState.level * i) * 0.5;
+            });
+
+            starPositions.forEach((pos, index) => {
+                createStar(pos, index);
+            });
+        }
+
+        function createStar(position, index) {
+            // Create star shape
+            const starShape = new THREE.Shape();
+            const outerRadius = 0.5;
+            const innerRadius = 0.2;
+            const spikes = 5;
+
+            for (let i = 0; i < spikes * 2; i++) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                if (i === 0) starShape.moveTo(x, y);
+                else starShape.lineTo(x, y);
+            }
+            starShape.closePath();
+
+            const extrudeSettings = { depth: 0.15, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05 };
+            const starGeometry = new THREE.ExtrudeGeometry(starShape, extrudeSettings);
+            const starMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff9500,
+                roughness: 0.3,
+                metalness: 0.6,
+                emissive: 0xff9500,
+                emissiveIntensity: 0.2
+            });
+
+            const star = new THREE.Mesh(starGeometry, starMaterial);
+            star.position.copy(position);
+            star.castShadow = true;
+            star.userData.index = index;
+            star.userData.collected = false;
+            scene.add(star);
+
+            // Physics sensor
+            const sphereShape = new CANNON.Sphere(0.6);
+            const starBody = new CANNON.Body({ mass: 0, isTrigger: true });
+            starBody.addShape(sphereShape);
+            starBody.position.copy(position);
+            world.addBody(starBody);
+
+            gameState.starObjects.push({ mesh: star, body: starBody, collected: false });
+        }
+
+        // Ramp creation
+        function createRamp(start, end, type = 'ramp') {
+            const startVec = new THREE.Vector3(start.x, start.y, start.z);
+            const endVec = new THREE.Vector3(end.x, end.y, end.z);
+
+            const direction = endVec.clone().sub(startVec);
+            const length = direction.length();
+            if (length < 0.5) return null;
+
+            const center = startVec.clone().add(endVec).multiplyScalar(0.5);
+
+            const mesh = createRampMesh(length, center, direction);
+            const body = createRampBody(length, center, direction);
+
+            if (mesh && body) {
+                scene.add(mesh);
+                world.addBody(body);
+                gameState.placedObjects.push({ mesh, body, type: 'ramp' });
+                return { mesh, body };
+            }
+            return null;
+        }
+        function createRampMesh(length, center, direction) {
+            const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xaf52de,
+                roughness: 0.4,
+                metalness: 0.2
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(center);
+
+            // Calculate rotation
+            const angle = Math.atan2(direction.y, direction.x);
+            mesh.rotation.z = angle;
+
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        function createRampBody(length, center, direction) {
+            const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.1, 1));
+            const body = new CANNON.Body({ mass: 0, material: rampMaterial });
+            body.addShape(shape);
+            body.position.copy(center);
+
+            const angle = Math.atan2(direction.y, direction.x);
+            body.quaternion.setFromEuler(0, 0, angle);
+
+            return body;
+        }
+
+
+        // Preview ramp
+        let previewMesh = null;
+
+        function updatePreview(start, end) {
+            if (previewMesh) {
+                scene.remove(previewMesh);
+                previewMesh = null;
+            }
+
+            if (!start || !end) return;
+
+            const direction = new THREE.Vector3().subVectors(end, start);
+            const length = direction.length();
+            if (length < 0.3) return;
+
+            const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+
+            const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xaf52de,
+                transparent: true,
+                opacity: 0.5
+            });
+
+            previewMesh = new THREE.Mesh(geometry, material);
+            previewMesh.position.copy(center);
+
+            const angle = Math.atan2(direction.y, direction.x);
+            previewMesh.rotation.z = angle;
+
+            scene.add(previewMesh);
+        }
+        // Raycasting for placement
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const placementPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+        function getWorldPosition(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(placementPlane, intersection);
+
+            // Clamp to playable area
+            intersection.x = Math.max(-15, Math.min(15, intersection.x));
+            intersection.y = Math.max(-11, Math.min(11, intersection.y));
+            intersection.z = 0;
+
+            return intersection;
+        }
+
+        // Event handlers
+        function onMouseDown(event) {
+            if (event.button !== 0) return; // Only left click
+            if (event.target !== renderer.domElement) return;
+
+            gameState.isDragging = true;
+            gameState.dragStart = getWorldPosition(event);
+            document.getElementById('preview-info').classList.add('visible');
+            controls.enabled = false;
+        }
+
+        function onMouseMove(event) {
+            if (!gameState.isDragging) return;
+
+            gameState.dragEnd = getWorldPosition(event);
+            updatePreview(gameState.dragStart, gameState.dragEnd);
+        }
+
+        function onMouseUp(event) {
+            if (!gameState.isDragging) return;
+
+            gameState.isDragging = false;
+            document.getElementById('preview-info').classList.remove('visible');
+            controls.enabled = true;
+
+            if (gameState.dragStart && gameState.dragEnd) {
+                createRamp(gameState.dragStart, gameState.dragEnd, gameState.currentTool);
+            }
+
+            gameState.dragStart = null;
+            gameState.dragEnd = null;
+
+            if (previewMesh) {
+                scene.remove(previewMesh);
+                previewMesh = null;
+            }
+        }
+
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            if (!gameState.isPlaying) {
+                gameState.isPlaying = true;
+                isFollowing = true;
+                isTransitioningToFollow = true;
+                orbitAngle = Math.atan2(camera.position.x - ball.position.x, camera.position.z - ball.position.z);
+                ballBody.type = CANNON.Body.DYNAMIC;
+                ballBody.wakeUp();
+                controls.enabled = false;
+            }
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', resetBall);
+        document.getElementById('btn-clear').addEventListener('click', clearAllRamps);
+        document.getElementById('btn-camera').addEventListener('click', resetCamera);
+        document.getElementById('btn-next').addEventListener('click', nextLevel);
+        function resetBall() {
+            gameState.isPlaying = false;
+            isOrbiting = false;
+            groundContactTime = 0;
+
+            ballBody.type = CANNON.Body.STATIC;
+            ballBody.position.copy(ballStartPosition);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            ball.position.copy(ballStartPosition);
+            ball.rotation.set(0, 0, 0);
+
+            cameraLookTarget = null;
+            cameraTargetPos = null;
+
+            // Reset stars
+            gameState.stars = 0;
+            updateStarDisplay();
+            gameState.starObjects.forEach(obj => {
+                obj.collected = false;
+                obj.mesh.visible = true;
+            });
+
+            // Ease camera back to original position
+            easeCameraToStart();
+            controls.enabled = true;
+        }
+
+        function easeCameraToStart() {
+            isFollowing = false;
+            isTransitioningToFollow = false;
+
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const endPos = new THREE.Vector3(0, 15, 25);
+            const endTarget = new THREE.Vector3(0, 0, 0);
+            const duration = 1200;
+            const startTime = Date.now();
+
+            function animateCamera() {
+                const elapsed = Date.now() - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                // Ease out cubic
+                const ease = 1 - Math.pow(1 - t, 3);
+
+                camera.position.lerpVectors(startPos, endPos, ease);
+                controls.target.lerpVectors(startTarget, endTarget, ease);
+
+                if (t < 1) {
+                    requestAnimationFrame(animateCamera);
+                }
+            }
+            animateCamera();
+        }
+
+        function updateFollowCamera(delta) {
+            if (!isFollowing || !gameState.isPlaying) return;
+
+            const ballPos = ball.position.clone();
+
+            // Initialize targets on first frame
+            if (!cameraLookTarget) {
+                cameraLookTarget = new THREE.Vector3(0, 0, 0); // Start looking at center
+                cameraTargetPos = camera.position.clone(); // Start from current camera position
+            }
+
+            // Orbit around the ball horizontally only
+            orbitAngle += orbitSpeed * delta;
+
+            // Calculate ideal camera position - same Y as ball, orbiting on X/Z
+            const idealPos = new THREE.Vector3(
+                ballPos.x + Math.sin(orbitAngle) * followDistance,
+                ballPos.y,
+                ballPos.z + Math.cos(orbitAngle) * followDistance
+            );
+
+            // Ease the target position (first layer of smoothing)
+            cameraTargetPos.x += 0.08 * (idealPos.x - cameraTargetPos.x);
+            cameraTargetPos.y += 0.08 * (idealPos.y - cameraTargetPos.y);
+            cameraTargetPos.z += 0.08 * (idealPos.z - cameraTargetPos.z);
+
+            // Ease the actual camera to the target (second layer of smoothing)
+            camera.position.x += 0.04 * (cameraTargetPos.x - camera.position.x);
+            camera.position.y += 0.04 * (cameraTargetPos.y - camera.position.y);
+            camera.position.z += 0.04 * (cameraTargetPos.z - camera.position.z);
+
+            // Ease the look target
+            cameraLookTarget.x += 0.04 * (ballPos.x - cameraLookTarget.x);
+            cameraLookTarget.y += 0.04 * (ballPos.y - cameraLookTarget.y);
+            cameraLookTarget.z += 0.04 * (ballPos.z - cameraLookTarget.z);
+
+            camera.lookAt(cameraLookTarget);
+
+            // Check if initial transition is done
+            if (isTransitioningToFollow && camera.position.distanceTo(idealPos) < 1) {
+                isTransitioningToFollow = false;
+            }
+        }
+        function clearAllRamps() {
+            gameState.placedObjects.forEach(obj => {
+                scene.remove(obj.mesh);
+                world.removeBody(obj.body);
+            });
+            gameState.placedObjects = [];
+        }
+
+        function resetCamera() {
+            camera.position.set(0, 15, 25);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        function nextLevel() {
+            document.getElementById('win-modal').classList.remove('active');
+            gameState.level++;
+            document.getElementById('level-display').textContent = `Level ${gameState.level}`;
+
+            clearAllRamps();
+            createStars();
+            resetBall();
+
+            // Move bowl slightly for variety
+            const angle = gameState.level * 0.5;
+            bowlPosition.x = Math.sin(angle) * 3;
+            bowl.position.copy(bowlPosition);
+            bowlBody.position.copy(bowlPosition);
+        }
+
+        function updateStarDisplay() {
+            document.getElementById('star-count').textContent = `${gameState.stars} / ${gameState.totalStars}`;
+        }
+
+        function showStarCollectAnimation(position) {
+            // Project 3D position to 2D
+            const vector = position.clone().project(camera);
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+
+            const popup = document.createElement('div');
+            popup.className = 'star-popup';
+            popup.textContent = '⭐';
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+            document.querySelector('.ui-overlay').appendChild(popup);
+
+            setTimeout(() => popup.remove(), 1000);
+
+            // Play sound effect (simple beep using Web Audio)
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.frequency.value = 880;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } catch (e) { }
+        }
+
+        function showWinModal() {
+            const modal = document.getElementById('win-modal');
+            modal.classList.add('active');
+        }
+
+        // Check collisions
+        function checkCollisions() {
+            if (!gameState.isPlaying) return;
+
+            const ballPos = new THREE.Vector3(
+                ballBody.position.x,
+                ballBody.position.y,
+                ballBody.position.z
+            );
+
+            // Check star collisions
+            gameState.starObjects.forEach(star => {
+                if (star.collected) return;
+
+                const dist = ballPos.distanceTo(star.mesh.position);
+                if (dist < 1) {
+                    star.collected = true;
+                    star.mesh.visible = false;
+                    gameState.stars++;
+                    updateStarDisplay();
+                    showStarCollectAnimation(star.mesh.position);
+                }
+            });
+
+            // Check bowl collision
+            const bowlDist = ballPos.distanceTo(bowlPosition);
+            if (bowlDist < 2 && ballPos.y < bowlPosition.y + 1) {
+                // Win!
+                gameState.isPlaying = false;
+                setTimeout(showWinModal, 500);
+            }
+
+            // Check if ball fell below ground
+            if (ballPos.y < -15) {
+                resetBall();
+            }
+        }
+
+        function checkGroundContact(delta) {
+            if (!gameState.isPlaying) return;
+
+            const ballY = ballBody.position.y;
+            const ballVelY = Math.abs(ballBody.velocity.y);
+
+            // Ball is on ground if it's low and barely moving vertically
+            if (ballY < -10.5 && ballVelY < 0.5) {
+                groundContactTime += delta * 1000;
+                if (groundContactTime >= groundResetDelay) {
+                    resetBall();
+                }
+            } else {
+                groundContactTime = 0;
+            }
+        }
+
+        // Animation loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = Math.min(clock.getDelta(), 0.1);
+
+            // Update physics
+            world.step(1 / 60, delta, 3);
+
+            // Sync ball
+            if (ball && ballBody) {
+                ball.position.copy(ballBody.position);
+                ball.quaternion.copy(ballBody.quaternion);
+            }
+
+            // Animate stars
+            gameState.starObjects.forEach((star, i) => {
+                if (!star.collected) {
+                    star.mesh.rotation.y += 0.02;
+                    star.mesh.position.y += Math.sin(Date.now() * 0.003 + i) * 0.002;
+                }
+            });
+
+            // Check collisions
+            checkCollisions();
+
+            // Update controls
+
+
+            // Check for ground contact timeout
+            checkGroundContact(delta);
+            // Follow camera when playing
+            updateFollowCamera(delta);
+            if (!isFollowing) {
+                controls.update();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Mouse events
+        renderer.domElement.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+
+        // Touch events
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            onMouseDown({ button: 0, target: renderer.domElement, clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            onMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+        });
+
+        window.addEventListener('touchend', onMouseUp);
+
+        // Initialize
+        createBall();
+        createBowl();
+        createStars();
+        animate();
+
+        console.log('🎮 Ball Drop Game initialized! Click and drag to place ramps, then press play!');
+    </script>
+</body>
+
+</html>
