@@ -365,3 +365,94 @@ canvas {
 .preview-info.visible {
     opacity: 1;
 }
+
+/* Editor Toolbar */
+.editor-toolbar {
+    position: absolute;
+    left: 80px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-secondary);
+    padding: 12px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    border: 2px solid var(--accent-purple);
+}
+
+.editor-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-purple);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.editor-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+.btn-editor {
+    background: var(--accent-purple);
+}
+
+.btn-editor.active {
+    background: var(--accent-green);
+    box-shadow: 0 0 12px var(--accent-green);
+}
+
+.btn-export {
+    background: var(--accent-blue);
+}
+
+.btn-import {
+    background: var(--accent-orange);
+}
+
+/* Code Modal */
+.code-modal {
+    width: 500px;
+    max-width: 90vw;
+}
+
+.code-modal textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: var(--radius-sm);
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    resize: vertical;
+    margin-bottom: 16px;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.modal-btn.secondary {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.modal-btn.secondary:hover {
+    background: #e0e0e0;
+}
+
+/* Editor active tool highlight */
+.editor-toolbar .tool-btn.active {
+    background: var(--accent-purple);
+}
+
+.editor-toolbar .tool-btn.active svg {
+    stroke: white;
+    fill: white;
+}

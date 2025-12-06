@@ -33,6 +33,60 @@
                 </button>
             </div>
 
+            <!-- Editor Toolbar (after existing toolbar) -->
+            <div class="editor-toolbar" id="editor-toolbar" style="display: none;">
+                <div class="editor-title">Level Editor</div>
+                <button class="tool-btn" data-editor-tool="star">
+                    <svg viewBox="0 0 24 24" fill="var(--accent-orange)" stroke="var(--accent-orange)">
+                        <polygon
+                            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                    <span class="tooltip">Place Star</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="bowl">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-green)" fill="none">
+                        <path d="M3 12c0 4.97 4.03 9 9 9s9-4.03 9-9H3z" stroke-width="2" />
+                    </svg>
+                    <span class="tooltip">Place Bowl</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="wall">
+                    <svg viewBox="0 0 24 24" stroke="var(--text-primary)" fill="none">
+                        <rect x="3" y="8" width="18" height="8" stroke-width="2" />
+                    </svg>
+                    <span class="tooltip">Place Wall (drag)</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="booster">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-blue)" fill="none">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-width="2" />
+                    </svg>
+                    <span class="tooltip">Place Booster (drag direction)</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="spike">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-pink)" fill="var(--accent-pink)">
+                        <polygon points="12 2 4 22 12 17 20 22" />
+                    </svg>
+                    <span class="tooltip">Place Spike</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="delete">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-pink)" fill="none">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
+                            stroke-width="2" />
+                    </svg>
+                    <span class="tooltip">Delete Object (click)</span>
+                </button>
+                <div class="editor-divider"></div>
+                <button class="action-btn btn-export" id="btn-export" title="Export Level">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke-width="2" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-import" id="btn-import" title="Import Level">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-width="2" />
+                    </svg>
+                </button>
+            </div>
+
             <!-- Actions -->
             <div class="actions">
                 <button class="action-btn btn-play" id="btn-play" title="Drop Ball">
@@ -58,6 +112,13 @@
                         <circle cx="12" cy="13" r="4" />
                     </svg>
                 </button>
+
+                <button class="action-btn btn-editor" id="btn-editor" title="Toggle Editor">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-width="2" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-width="2" />
+                    </svg>
+                </button>
             </div>
 
             <!-- Instructions -->
@@ -78,6 +139,18 @@
                     <p>You collected all the stars!</p>
                     <div class="modal-stars" id="modal-stars">⭐⭐⭐⭐⭐</div>
                     <button class="modal-btn" id="btn-next">Next Level</button>
+                </div>
+            </div>
+
+            <!-- Code Modal -->
+            <div class="modal-overlay" id="code-modal">
+                <div class="modal code-modal">
+                    <h2 id="code-modal-title">Level Code</h2>
+                    <textarea id="level-code" rows="12" placeholder="Paste level code here..."></textarea>
+                    <div class="modal-buttons">
+                        <button class="modal-btn secondary" id="btn-code-cancel">Cancel</button>
+                        <button class="modal-btn" id="btn-code-confirm">Copy & Close</button>
+                    </div>
                 </div>
             </div>
         </div>

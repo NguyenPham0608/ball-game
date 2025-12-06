@@ -17,6 +17,26 @@ const gameState = {
     dragEnd: null
 };
 
+// Editor State
+const editorState = {
+    isEditorMode: false,
+    currentTool: 'star',
+    levelObjects: {
+        stars: [],
+        bowl: { x: 0, y: -11.5, z: 0 },
+        walls: [],
+        boosters: [],
+        spikes: []
+    }
+};
+
+// Level object meshes for editor
+const editorObjects = {
+    walls: [],
+    boosters: [],
+    spikes: []
+};
+
 // Audio setup for collision sounds
 const collisionSound = new Audio('knock2.wav');
 collisionSound.volume = 0.5;
@@ -487,6 +507,384 @@ function createGlowTexture() {
     const texture = new THREE.CanvasTexture(canvas);
     return texture;
 }
+
+// Create wall
+function createWall(start, end) {
+    const startVec = new THREE.Vector3(start.x, start.y, start.z);
+    const endVec = new THREE.Vector3(end.x, end.y, end.z);
+    const direction = endVec.clone().sub(startVec);
+    const length = direction.length();
+    if (length < 0.5) return null;
+
+    const center = startVec.clone().add(endVec).multiplyScalar(0.5);
+
+    // Visual
+    const geometry = new THREE.BoxGeometry(length, 0.5, 1);
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x8e8e93,
+        roughness: 0.3,
+        metalness: 0.5
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(center);
+    const angle = Math.atan2(direction.y, direction.x);
+    mesh.rotation.z = angle;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    // Physics
+    const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.25, 0.5));
+    const body = new CANNON.Body({ mass: 0, material: groundMaterial });
+    body.addShape(shape);
+    body.position.copy(center);
+    body.quaternion.setFromEuler(0, 0, angle);
+    world.addBody(body);
+
+    const wallData = { mesh, body, start: { ...start }, end: { ...end }, type: 'wall' };
+    editorObjects.walls.push(wallData);
+    return wallData;
+}
+
+// Create booster
+function createBooster(position, direction, strength = 20) {
+    const geometry = new THREE.ConeGeometry(0.5, 1.2, 8);
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x0071e3,
+        emissive: 0x0071e3,
+        emissiveIntensity: 0.5,
+        roughness: 0.2,
+        metalness: 0.8
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(position.x, position.y, position.z);
+
+    // Point in boost direction
+    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, dir);
+    mesh.quaternion.copy(quaternion);
+    mesh.castShadow = true;
+    scene.add(mesh);
+
+    // Trigger zone (no physics body, just detection)
+    const boosterData = {
+        mesh,
+        position: { ...position },
+        direction: { x: dir.x, y: dir.y, z: dir.z },
+        strength,
+        type: 'booster'
+    };
+    editorObjects.boosters.push(boosterData);
+    return boosterData;
+}
+
+// Create spike
+// Create spike
+function createSpike(position) {
+    // Raycast down to find the lowest platform/ground
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(new THREE.Vector3(position.x, position.y, position.z), new THREE.Vector3(0, -1, 0));
+
+    // Collect all meshes to check against
+    const meshesToCheck = [];
+    scene.traverse((obj) => {
+        if (obj.isMesh && obj !== ball) {
+            meshesToCheck.push(obj);
+        }
+    });
+
+    const intersects = raycaster.intersectObjects(meshesToCheck);
+
+    let targetY = -12; // Default to ground level
+    let surfaceNormal = new THREE.Vector3(0, 1, 0);
+
+    if (intersects.length > 0) {
+        targetY = intersects[0].point.y;
+        if (intersects[0].face) {
+            surfaceNormal = intersects[0].face.normal.clone();
+            intersects[0].object.getWorldQuaternion(new THREE.Quaternion());
+            surfaceNormal.applyQuaternion(intersects[0].object.quaternion);
+        }
+    }
+
+    // Single red cone
+    const spikeGeo = new THREE.ConeGeometry(0.3, 1, 8);
+    const spikeMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff2d55,
+        emissive: 0xff2d55,
+        emissiveIntensity: 0.3,
+        roughness: 0.3,
+        metalness: 0.6
+    });
+    const spike = new THREE.Mesh(spikeGeo, spikeMaterial);
+    spike.castShadow = true;
+
+    // Position at the surface
+    spike.position.set(position.x, targetY + 0.5, position.z);
+
+    // Align to surface normal
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, surfaceNormal);
+    spike.quaternion.copy(quaternion);
+
+    scene.add(spike);
+
+    // Collision body
+    const shape = new CANNON.Sphere(0.4);
+    const body = new CANNON.Body({ mass: 0, isTrigger: true });
+    body.addShape(shape);
+    body.position.set(position.x, targetY + 0.5, position.z);
+    world.addBody(body);
+
+    const spikeData = { mesh: spike, body, position: { x: position.x, y: targetY + 0.5, z: position.z }, type: 'spike' };
+    editorObjects.spikes.push(spikeData);
+    return spikeData;
+}
+// Create spike at exact position (for loading levels)
+function createSpikeAtPosition(position) {
+    const spikeGeo = new THREE.ConeGeometry(0.3, 1, 8);
+    const spikeMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff2d55,
+        emissive: 0xff2d55,
+        emissiveIntensity: 0.3,
+        roughness: 0.3,
+        metalness: 0.6
+    });
+    const spike = new THREE.Mesh(spikeGeo, spikeMaterial);
+    spike.castShadow = true;
+    spike.position.set(position.x, position.y, position.z);
+    scene.add(spike);
+
+    const shape = new CANNON.Sphere(0.4);
+    const body = new CANNON.Body({ mass: 0, isTrigger: true });
+    body.addShape(shape);
+    body.position.set(position.x, position.y, position.z);
+    world.addBody(body);
+
+    const spikeData = { mesh: spike, body, position: { ...position }, type: 'spike' };
+    editorObjects.spikes.push(spikeData);
+    return spikeData;
+}
+// Level code generation
+function generateLevelCode() {
+    const lines = [];
+
+    // Ball start position
+    lines.push(`BALL:${ballStartPosition.x},${ballStartPosition.y},${ballStartPosition.z}`);
+
+    // Bowl
+    lines.push(`BOWL:${bowlPosition.x},${bowlPosition.y},${bowlPosition.z}`);
+
+    // Stars
+    gameState.starObjects.forEach(star => {
+        const pos = star.mesh.position;
+        lines.push(`STAR:${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)}`);
+    });
+
+    // Walls
+    editorObjects.walls.forEach(wall => {
+        lines.push(`WALL:${wall.start.x.toFixed(2)},${wall.start.y.toFixed(2)},${wall.start.z.toFixed(2)},${wall.end.x.toFixed(2)},${wall.end.y.toFixed(2)},${wall.end.z.toFixed(2)}`);
+    });
+
+    // Boosters
+    editorObjects.boosters.forEach(booster => {
+        lines.push(`BOOSTER:${booster.position.x.toFixed(2)},${booster.position.y.toFixed(2)},${booster.position.z.toFixed(2)},${booster.direction.x.toFixed(2)},${booster.direction.y.toFixed(2)},${booster.direction.z.toFixed(2)},${booster.strength}`);
+    });
+
+    // Spikes
+    editorObjects.spikes.forEach(spike => {
+        lines.push(`SPIKE:${spike.position.x.toFixed(2)},${spike.position.y.toFixed(2)},${spike.position.z.toFixed(2)}`);
+    });
+
+    // Ramps
+    gameState.placedObjects.forEach(obj => {
+        if (obj.type === 'ramp') {
+            const pos = obj.mesh.position;
+            const rot = obj.mesh.rotation.z;
+            const scale = obj.mesh.geometry.parameters.width;
+            lines.push(`RAMP:${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)},${rot.toFixed(3)},${scale.toFixed(2)}`);
+        }
+    });
+
+    return lines.join('\n');
+}
+
+// Parse level code
+function parseLevelCode(code) {
+    const data = {
+        ball: { x: 0, y: 12, z: 0 },
+        bowl: { x: 0, y: -11.5, z: 0 },
+        stars: [],
+        walls: [],
+        boosters: [],
+        spikes: [],
+        ramps: []
+    };
+
+    const lines = code.trim().split('\n');
+    lines.forEach(line => {
+        const [type, params] = line.split(':');
+        if (!params) return;
+        const values = params.split(',').map(Number);
+
+        switch (type) {
+            case 'BALL':
+                data.ball = { x: values[0], y: values[1], z: values[2] };
+                break;
+            case 'BOWL':
+                data.bowl = { x: values[0], y: values[1], z: values[2] };
+                break;
+            case 'STAR':
+                data.stars.push({ x: values[0], y: values[1], z: values[2] });
+                break;
+            case 'WALL':
+                data.walls.push({
+                    start: { x: values[0], y: values[1], z: values[2] },
+                    end: { x: values[3], y: values[4], z: values[5] }
+                });
+                break;
+            case 'BOOSTER':
+                data.boosters.push({
+                    position: { x: values[0], y: values[1], z: values[2] },
+                    direction: { x: values[3], y: values[4], z: values[5] },
+                    strength: values[6] || 20
+                });
+                break;
+            case 'SPIKE':
+                data.spikes.push({ x: values[0], y: values[1], z: values[2] });
+                break;
+            case 'RAMP':
+                data.ramps.push({
+                    position: { x: values[0], y: values[1], z: values[2] },
+                    rotation: values[3],
+                    length: values[4]
+                });
+                break;
+        }
+    });
+
+    return data;
+}
+
+// Load level from code
+function loadLevelFromCode(code) {
+    const data = parseLevelCode(code);
+
+    // Clear everything
+    clearLevel();
+
+    // Set ball start
+    ballStartPosition.set(data.ball.x, data.ball.y, data.ball.z);
+
+    // Set bowl position
+    bowlPosition.set(data.bowl.x, data.bowl.y, data.bowl.z);
+    bowl.position.copy(bowlPosition);
+    bowlBody.position.copy(bowlPosition);
+
+    // Create stars
+    data.stars.forEach((pos, index) => {
+        createStar(new THREE.Vector3(pos.x, pos.y, pos.z), index);
+    });
+    gameState.totalStars = data.stars.length;
+    updateStarDisplay();
+
+    // Create walls
+    data.walls.forEach(wall => {
+        createWall(wall.start, wall.end);
+    });
+
+    // Create boosters
+    data.boosters.forEach(booster => {
+        createBooster(booster.position, booster.direction, booster.strength);
+    });
+
+    // Create spikes
+    data.spikes.forEach(spike => {
+        createSpikeAtPosition(spike);
+    });
+
+    // Create ramps from level data
+    data.ramps.forEach(ramp => {
+        createRampFromData(ramp);
+    });
+
+    resetBall();
+}
+
+// Create ramp from saved data
+function createRampFromData(data) {
+    const length = data.length;
+    const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+    const material = new THREE.MeshStandardMaterial({
+        color: 0xaf52de,
+        roughness: 0.4,
+        metalness: 0.2
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(data.position.x, data.position.y, data.position.z);
+    mesh.rotation.z = data.rotation;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.1, 1));
+    const body = new CANNON.Body({ mass: 0, material: rampMaterial });
+    body.addShape(shape);
+    body.position.set(data.position.x, data.position.y, data.position.z);
+    body.quaternion.setFromEuler(0, 0, data.rotation);
+    world.addBody(body);
+
+    gameState.placedObjects.push({ mesh, body, type: 'ramp' });
+}
+
+// Clear entire level
+function clearLevel() {
+    // Clear stars
+    gameState.starObjects.forEach(obj => {
+        scene.remove(obj.mesh);
+        if (obj.body) world.removeBody(obj.body);
+    });
+    gameState.starObjects = [];
+
+    // Clear walls
+    editorObjects.walls.forEach(obj => {
+        scene.remove(obj.mesh);
+        if (obj.body) world.removeBody(obj.body);
+    });
+    editorObjects.walls = [];
+
+    // Clear boosters
+    editorObjects.boosters.forEach(obj => {
+        scene.remove(obj.mesh);
+    });
+    editorObjects.boosters = [];
+
+    // Clear spikes
+    editorObjects.spikes.forEach(obj => {
+        scene.remove(obj.mesh);
+        if (obj.body) world.removeBody(obj.body);
+    });
+    editorObjects.spikes = [];
+
+    // Clear ramps
+    clearAllRamps();
+}
+
+// Load level from file
+async function loadLevelFile(levelNum) {
+    try {
+        const response = await fetch(`levels/level${levelNum}.txt`);
+        if (!response.ok) throw new Error('Level not found');
+        const code = await response.text();
+        loadLevelFromCode(code);
+        document.getElementById('level-display').textContent = `Level ${levelNum}`;
+        return true;
+    } catch (e) {
+        console.log(`Level ${levelNum} not found, using default`);
+        return false;
+    }
+}
 // Ramp creation
 function createRamp(start, end, type = 'ramp') {
     const startVec = new THREE.Vector3(start.x, start.y, start.z);
@@ -597,13 +995,104 @@ function getWorldPosition(event) {
 
 // Event handlers
 function onMouseDown(event) {
-    if (event.button !== 0) return; // Only left click
+    if (event.button !== 0) return;
     if (event.target !== renderer.domElement) return;
 
+    const pos = getWorldPosition(event);
+
+    if (editorState.isEditorMode) {
+        handleEditorClick(pos, event);
+        return;
+    }
+
     gameState.isDragging = true;
-    gameState.dragStart = getWorldPosition(event);
+    gameState.dragStart = pos;
     document.getElementById('preview-info').classList.add('visible');
     controls.enabled = false;
+}
+
+function handleEditorClick(pos, event) {
+    switch (editorState.currentTool) {
+        case 'star':
+            createStar(new THREE.Vector3(pos.x, pos.y, pos.z), gameState.starObjects.length);
+            gameState.totalStars = gameState.starObjects.length;
+            updateStarDisplay();
+            break;
+        case 'bowl':
+            bowlPosition.set(pos.x, -11.1, pos.z);
+            bowl.position.copy(bowlPosition);
+            bowlBody.position.copy(bowlPosition);
+            break;
+        case 'wall':
+        case 'booster':
+            gameState.isDragging = true;
+            gameState.dragStart = pos;
+            controls.enabled = false;
+            break;
+        case 'spike':
+            createSpike(pos);
+            break;
+        case 'delete':
+            deleteObjectAt(pos);
+            break;
+    }
+}
+
+function deleteObjectAt(pos) {
+    const threshold = 1.5;
+
+    // Check stars
+    for (let i = gameState.starObjects.length - 1; i >= 0; i--) {
+        if (gameState.starObjects[i].mesh.position.distanceTo(pos) < threshold) {
+            scene.remove(gameState.starObjects[i].mesh);
+            if (gameState.starObjects[i].body) world.removeBody(gameState.starObjects[i].body);
+            gameState.starObjects.splice(i, 1);
+            gameState.totalStars = gameState.starObjects.length;
+            updateStarDisplay();
+            return;
+        }
+    }
+
+    // Check walls
+    for (let i = editorObjects.walls.length - 1; i >= 0; i--) {
+        if (editorObjects.walls[i].mesh.position.distanceTo(pos) < threshold) {
+            scene.remove(editorObjects.walls[i].mesh);
+            world.removeBody(editorObjects.walls[i].body);
+            editorObjects.walls.splice(i, 1);
+            return;
+        }
+    }
+
+    // Check boosters
+    for (let i = editorObjects.boosters.length - 1; i >= 0; i--) {
+        const bPos = new THREE.Vector3(editorObjects.boosters[i].position.x, editorObjects.boosters[i].position.y, editorObjects.boosters[i].position.z);
+        if (bPos.distanceTo(pos) < threshold) {
+            scene.remove(editorObjects.boosters[i].mesh);
+            editorObjects.boosters.splice(i, 1);
+            return;
+        }
+    }
+
+    // Check spikes
+    for (let i = editorObjects.spikes.length - 1; i >= 0; i--) {
+        const sPos = new THREE.Vector3(editorObjects.spikes[i].position.x, editorObjects.spikes[i].position.y, editorObjects.spikes[i].position.z);
+        if (sPos.distanceTo(pos) < threshold) {
+            scene.remove(editorObjects.spikes[i].mesh);
+            world.removeBody(editorObjects.spikes[i].body);
+            editorObjects.spikes.splice(i, 1);
+            return;
+        }
+    }
+
+    // Check ramps
+    for (let i = gameState.placedObjects.length - 1; i >= 0; i--) {
+        if (gameState.placedObjects[i].mesh.position.distanceTo(pos) < threshold) {
+            scene.remove(gameState.placedObjects[i].mesh);
+            world.removeBody(gameState.placedObjects[i].body);
+            gameState.placedObjects.splice(i, 1);
+            return;
+        }
+    }
 }
 
 function onMouseMove(event) {
@@ -621,7 +1110,16 @@ function onMouseUp(event) {
     controls.enabled = true;
 
     if (gameState.dragStart && gameState.dragEnd) {
-        createRamp(gameState.dragStart, gameState.dragEnd, gameState.currentTool);
+        if (editorState.isEditorMode) {
+            if (editorState.currentTool === 'wall') {
+                createWall(gameState.dragStart, gameState.dragEnd);
+            } else if (editorState.currentTool === 'booster') {
+                const direction = new THREE.Vector3().subVectors(gameState.dragEnd, gameState.dragStart).normalize();
+                createBooster(gameState.dragStart, direction, 20);
+            }
+        } else {
+            createRamp(gameState.dragStart, gameState.dragEnd, gameState.currentTool);
+        }
     }
 
     gameState.dragStart = null;
@@ -778,21 +1276,25 @@ function resetCamera() {
     controls.update();
 }
 
-function nextLevel() {
+async function nextLevel() {
     document.getElementById('win-modal').classList.remove('active');
     gameState.level++;
-    document.getElementById('level-display').textContent = `Level ${gameState.level}`;
 
-    clearAllRamps();
-    createStars();
+    const loaded = await loadLevelFile(gameState.level);
+    if (!loaded) {
+        // Fallback to generated level
+        document.getElementById('level-display').textContent = `Level ${gameState.level}`;
+        clearLevel();
+        createStars();
+
+        const angle = gameState.level * 0.5;
+        bowlPosition.x = Math.sin(angle) * 3;
+        bowlPosition.y = -11.1;
+        bowl.position.copy(bowlPosition);
+        bowlBody.position.copy(bowlPosition);
+    }
+
     resetBall();
-
-    // Move bowl slightly for variety
-    const angle = gameState.level * 0.5;
-    bowlPosition.x = Math.sin(angle) * 3;
-    bowlPosition.y = -11.25;
-    bowl.position.copy(bowlPosition);
-    bowlBody.position.copy(bowlPosition);
 }
 
 function updateStarDisplay() {
@@ -1028,10 +1530,32 @@ function checkCollisions() {
         }
     });
 
+    // Check booster collisions
+    editorObjects.boosters.forEach(booster => {
+        const boosterPos = new THREE.Vector3(booster.position.x, booster.position.y, booster.position.z);
+        const dist = ballPos.distanceTo(boosterPos);
+        if (dist < 1.5) {
+            // Apply boost force
+            ballBody.velocity.x += booster.direction.x * booster.strength * 0.5;
+            ballBody.velocity.y += booster.direction.y * booster.strength * 0.5;
+            ballBody.velocity.z += booster.direction.z * booster.strength * 0.5;
+        }
+    });
+
+    // Check spike collisions
+    editorObjects.spikes.forEach(spike => {
+        const spikePos = new THREE.Vector3(spike.position.x, spike.position.y, spike.position.z);
+        const dist = ballPos.distanceTo(spikePos);
+        if (dist < 0.8) {
+            // Hit spike - reset
+            resetBall();
+            return;
+        }
+    });
+
     // Check bowl collision
     const bowlDist = ballPos.distanceTo(bowlPosition);
     if (bowlDist < 2 && ballPos.y < bowlPosition.y + 1) {
-        // Win!
         gameState.isPlaying = false;
         setTimeout(showWinModal, 500);
     }
@@ -1041,7 +1565,6 @@ function checkCollisions() {
         resetBall();
     }
 }
-
 function checkGroundContact(delta) {
     if (!gameState.isPlaying) return;
 
@@ -1137,6 +1660,64 @@ window.addEventListener('touchmove', (e) => {
 });
 
 window.addEventListener('touchend', onMouseUp);
+
+// Editor toggle
+document.getElementById('btn-editor').addEventListener('click', () => {
+    editorState.isEditorMode = !editorState.isEditorMode;
+    document.getElementById('editor-toolbar').style.display = editorState.isEditorMode ? 'flex' : 'none';
+    document.getElementById('btn-editor').classList.toggle('active', editorState.isEditorMode);
+
+    if (editorState.isEditorMode) {
+        document.querySelector('.instructions').innerHTML =
+            '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects';
+    } else {
+        document.querySelector('.instructions').innerHTML =
+            '<strong>Click and drag</strong> to place ramps • <strong>Scroll</strong> to zoom • <strong>Right-drag</strong> to rotate view';
+    }
+});
+
+// Editor tool selection
+document.querySelectorAll('[data-editor-tool]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-editor-tool]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        editorState.currentTool = btn.dataset.editorTool;
+    });
+});
+
+// Export button
+document.getElementById('btn-export').addEventListener('click', () => {
+    const code = generateLevelCode();
+    document.getElementById('level-code').value = code;
+    document.getElementById('code-modal-title').textContent = 'Export Level Code';
+    document.getElementById('btn-code-confirm').textContent = 'Copy & Close';
+    document.getElementById('code-modal').classList.add('active');
+});
+
+// Import button
+document.getElementById('btn-import').addEventListener('click', () => {
+    document.getElementById('level-code').value = '';
+    document.getElementById('code-modal-title').textContent = 'Import Level Code';
+    document.getElementById('btn-code-confirm').textContent = 'Load Level';
+    document.getElementById('code-modal').classList.add('active');
+});
+
+// Code modal buttons
+document.getElementById('btn-code-cancel').addEventListener('click', () => {
+    document.getElementById('code-modal').classList.remove('active');
+});
+
+document.getElementById('btn-code-confirm').addEventListener('click', () => {
+    const code = document.getElementById('level-code').value;
+    const isExport = document.getElementById('code-modal-title').textContent === 'Export Level Code';
+
+    if (isExport) {
+        navigator.clipboard.writeText(code).catch(() => { });
+    } else if (code.trim()) {
+        loadLevelFromCode(code);
+    }
+    document.getElementById('code-modal').classList.remove('active');
+});
 
 // Initialize
 createBall();
