@@ -39,6 +39,15 @@ let isOrbiting = false;
 let groundContactTime = 0;
 const groundResetDelay = 3000; // 3 seconds in ms
 
+// Trail system
+const trailPositions = [];
+const trailMeshes = [];
+const maxTrailLength = 25;
+const trailSpacing = 0.1; // Minimum distance between trail points
+
+// Star burst particles
+const burstParticles = [];
+
 function playCollisionSound(impactVelocity) {
     const now = Date.now();
     if (now - lastCollisionTime < collisionCooldown) return;
@@ -224,7 +233,59 @@ function createBall() {
         playCollisionSound(Math.abs(impactVelocity));
     });
 }
+function updateTrail() {
+    if (!gameState.isPlaying || !ball) return;
 
+    const currentPos = ball.position.clone();
+
+    // Only add point if ball moved enough
+    if (trailPositions.length === 0 ||
+        currentPos.distanceTo(trailPositions[trailPositions.length - 1]) > trailSpacing) {
+
+        trailPositions.push(currentPos);
+
+        // Create trail sphere
+        const trailGeometry = new THREE.SphereGeometry(ballRadius * 0.8, 16, 16);
+        const trailMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0071e3,
+            transparent: true,
+            opacity: 0.6,
+            emissive: 0x0071e3,
+            emissiveIntensity: 0.3
+        });
+        const trailMesh = new THREE.Mesh(trailGeometry, trailMaterial);
+        trailMesh.position.copy(currentPos);
+        scene.add(trailMesh);
+        trailMeshes.push(trailMesh);
+    }
+
+    // Limit trail length
+    while (trailPositions.length > maxTrailLength) {
+        trailPositions.shift();
+        const oldMesh = trailMeshes.shift();
+        scene.remove(oldMesh);
+        oldMesh.geometry.dispose();
+        oldMesh.material.dispose();
+    }
+
+    // Update trail opacity and scale (fade out older segments)
+    trailMeshes.forEach((mesh, i) => {
+        const age = (i + 1) / trailMeshes.length;
+        mesh.material.opacity = age * 0.5;
+        const scale = 0.3 + age * 0.7;
+        mesh.scale.setScalar(scale);
+    });
+}
+
+function clearTrail() {
+    trailPositions.length = 0;
+    trailMeshes.forEach(mesh => {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+    });
+    trailMeshes.length = 0;
+}
 // Bowl (target)
 let bowl, bowlBody;
 const bowlPosition = new THREE.Vector3(0, -11.5, 0);
@@ -361,19 +422,43 @@ function createStar(position, index) {
     const extrudeSettings = { depth: 0.15, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05 };
     const starGeometry = new THREE.ExtrudeGeometry(starShape, extrudeSettings);
     const starMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff9500,
-        roughness: 0.3,
-        metalness: 0.6,
+        color: 0xffcc00,
+        roughness: 0.2,
+        metalness: 0.8,
         emissive: 0xff9500,
-        emissiveIntensity: 0.2
+        emissiveIntensity: 0.8
     });
 
+    const starGroup = new THREE.Group();
+
     const star = new THREE.Mesh(starGeometry, starMaterial);
-    star.position.copy(position);
     star.castShadow = true;
-    star.userData.index = index;
-    star.userData.collected = false;
-    scene.add(star);
+    starGroup.add(star);
+
+    // Add point light for glow effect
+    const starLight = new THREE.PointLight(0xff9500, 2, 5);
+    starLight.position.set(0, 0, 0.5);
+    starGroup.add(starLight);
+
+    // Add glow sprite
+    const glowTexture = createGlowTexture();
+    const glowMaterial = new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0xff9500,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        opacity: 0.6
+    });
+    const glowSprite = new THREE.Sprite(glowMaterial);
+    glowSprite.scale.set(3, 3, 1);
+    starGroup.add(glowSprite);
+
+    starGroup.position.copy(position);
+    starGroup.userData.index = index;
+    starGroup.userData.collected = false;
+    starGroup.userData.light = starLight;
+    starGroup.userData.glow = glowSprite;
+    scene.add(starGroup);
 
     // Physics sensor
     const sphereShape = new CANNON.Sphere(0.6);
@@ -382,9 +467,26 @@ function createStar(position, index) {
     starBody.position.copy(position);
     world.addBody(starBody);
 
-    gameState.starObjects.push({ mesh: star, body: starBody, collected: false });
+    gameState.starObjects.push({ mesh: starGroup, body: starBody, collected: false });
 }
 
+function createGlowTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 200, 100, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 150, 0, 0.5)');
+    gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
+}
 // Ramp creation
 function createRamp(start, end, type = 'ramp') {
     const startVec = new THREE.Vector3(start.x, start.y, start.z);
@@ -559,6 +661,16 @@ function resetBall() {
     ballBody.angularVelocity.set(0, 0, 0);
     ball.position.copy(ballStartPosition);
     ball.rotation.set(0, 0, 0);
+    clearTrail();
+
+    // Clear any remaining burst particles
+    for (let i = burstParticles.length - 1; i >= 0; i--) {
+        const particle = burstParticles[i];
+        scene.remove(particle);
+        particle.geometry.dispose();
+        particle.material.dispose();
+    }
+    burstParticles.length = 0;
 
     cameraLookTarget = null;
     cameraTargetPos = null;
@@ -688,39 +800,205 @@ function updateStarDisplay() {
 }
 
 function showStarCollectAnimation(position) {
-    // Project 3D position to 2D
-    const vector = position.clone().project(camera);
-    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+    // Create burst particles in 3D
+    const particleCount = 5;
+    const colors = [0xffcc00, 0xff9500, 0xffdd44, 0xffaa00];
 
-    const popup = document.createElement('div');
-    popup.className = 'star-popup';
-    popup.textContent = '⭐';
-    popup.style.left = x + 'px';
-    popup.style.top = y + 'px';
-    document.querySelector('.ui-overlay').appendChild(popup);
+    for (let i = 0; i < particleCount; i++) {
+        // Create star-shaped particle
+        const starShape = new THREE.Shape();
+        const outerRadius = 0.15 + Math.random() * 0.1;
+        const innerRadius = outerRadius * 0.4;
+        const spikes = 5;
 
-    setTimeout(() => popup.remove(), 1000);
+        for (let j = 0; j < spikes * 2; j++) {
+            const radius = j % 2 === 0 ? outerRadius : innerRadius;
+            const angle = (j / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            if (j === 0) starShape.moveTo(x, y);
+            else starShape.lineTo(x, y);
+        }
+        starShape.closePath();
 
-    // Play sound effect (simple beep using Web Audio)
+        const geometry = new THREE.ExtrudeGeometry(starShape, {
+            depth: 0.05,
+            bevelEnabled: false
+        });
+
+        const material = new THREE.MeshStandardMaterial({
+            color: colors[Math.floor(Math.random() * colors.length)],
+            emissive: 0xff9500,
+            emissiveIntensity: 0.5,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(position);
+
+        // Random explosion direction
+        const angle = (i / particleCount) * Math.PI * 2;
+        const upwardBias = 0.5 + Math.random() * 0.5;
+        const speed = 8 + Math.random() * 6;
+
+        particle.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * speed * (0.5 + Math.random() * 0.5),
+            upwardBias * speed,
+            Math.sin(angle) * speed * (0.5 + Math.random() * 0.5)
+        );
+        particle.userData.rotationSpeed = new THREE.Vector3(
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15
+        );
+        particle.userData.gravity = -25;
+        particle.userData.life = 1.0;
+        particle.userData.scale = 0.8 + Math.random() * 0.4;
+
+        scene.add(particle);
+        burstParticles.push(particle);
+    }
+
+    // Add sparkle particles (smaller, faster fade)
+    for (let i = 0; i < 10; i++) {
+        const sparkGeometry = new THREE.SphereGeometry(0.05 + Math.random() * 0.05, 8, 8);
+        const sparkMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffcc,
+            transparent: true,
+            opacity: 1
+        });
+
+        const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
+        spark.position.copy(position);
+
+        const angle = Math.random() * Math.PI * 2;
+        const elevation = Math.random() * Math.PI - Math.PI / 2;
+        const speed = 5 + Math.random() * 10;
+
+        spark.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * Math.cos(elevation) * speed,
+            Math.sin(elevation) * speed + 3,
+            Math.sin(angle) * Math.cos(elevation) * speed
+        );
+        spark.userData.gravity = -15;
+        spark.userData.life = 1.0;
+        spark.userData.fadeSpeed = 2 + Math.random();
+        spark.userData.isSpark = true;
+
+        scene.add(spark);
+        burstParticles.push(spark);
+    }
+
+    // Flash effect at collection point
+    const flashGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff99,
+        transparent: true,
+        opacity: 1
+    });
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.userData.isFlash = true;
+    flash.userData.life = 1.0;
+    scene.add(flash);
+    burstParticles.push(flash);
+
+    // Play layered sound effect
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
 
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        // Main chime
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.frequency.value = 880;
+        osc1.type = 'sine';
+        gain1.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc1.start(audioCtx.currentTime);
+        osc1.stop(audioCtx.currentTime + 0.3);
 
-        oscillator.frequency.value = 880;
-        oscillator.type = 'sine';
-        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        // Shimmer
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.frequency.value = 1320;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc2.start(audioCtx.currentTime + 0.05);
+        osc2.stop(audioCtx.currentTime + 0.25);
 
-        oscillator.start(audioCtx.currentTime);
-        oscillator.stop(audioCtx.currentTime + 0.2);
+        // Pop
+        const osc3 = audioCtx.createOscillator();
+        const gain3 = audioCtx.createGain();
+        osc3.connect(gain3);
+        gain3.connect(audioCtx.destination);
+        osc3.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc3.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+        osc3.type = 'sine';
+        gain3.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain3.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc3.start(audioCtx.currentTime);
+        osc3.stop(audioCtx.currentTime + 0.1);
     } catch (e) { }
 }
 
+function updateBurstParticles(delta) {
+    for (let i = burstParticles.length - 1; i >= 0; i--) {
+        const particle = burstParticles[i];
+
+        if (particle.userData.isFlash) {
+            // Flash expands and fades quickly
+            particle.userData.life -= delta * 5;
+            particle.scale.setScalar(1 + (1 - particle.userData.life) * 3);
+            particle.material.opacity = particle.userData.life;
+
+            if (particle.userData.life <= 0) {
+                scene.remove(particle);
+                particle.geometry.dispose();
+                particle.material.dispose();
+                burstParticles.splice(i, 1);
+            }
+            continue;
+        }
+
+        if (particle.userData.isSpark) {
+            // Sparks fade faster
+            particle.userData.life -= delta * particle.userData.fadeSpeed;
+            particle.material.opacity = particle.userData.life;
+        } else {
+            // Star particles fade slower
+            particle.userData.life -= delta * 0.8;
+        }
+
+        // Apply velocity
+        particle.position.x += particle.userData.velocity.x * delta;
+        particle.position.y += particle.userData.velocity.y * delta;
+        particle.position.z += particle.userData.velocity.z * delta;
+
+        // Apply gravity
+        particle.userData.velocity.y += particle.userData.gravity * delta;
+
+        // Rotate star particles
+        if (particle.userData.rotationSpeed) {
+            particle.rotation.x += particle.userData.rotationSpeed.x * delta;
+            particle.rotation.y += particle.userData.rotationSpeed.y * delta;
+            particle.rotation.z += particle.userData.rotationSpeed.z * delta;
+        }
+
+        // Remove dead particles or those that fell off screen
+        if (particle.userData.life <= 0 || particle.position.y < -20) {
+            scene.remove(particle);
+            particle.geometry.dispose();
+            particle.material.dispose();
+            burstParticles.splice(i, 1);
+        }
+    }
+}
 function showWinModal() {
     const modal = document.getElementById('win-modal');
     modal.classList.add('active');
@@ -796,6 +1074,10 @@ function animate() {
     if (ball && ballBody) {
         ball.position.set(ballBody.position.x, ballBody.position.y, ballBody.position.z);
         ball.quaternion.set(ballBody.quaternion.x, ballBody.quaternion.y, ballBody.quaternion.z, ballBody.quaternion.w);
+        // Update ball trail
+        // updateTrail();
+        // Update burst particles
+        updateBurstParticles(delta);
     }
 
     // Animate stars
@@ -803,6 +1085,17 @@ function animate() {
         if (!star.collected) {
             star.mesh.rotation.y += 0.02;
             star.mesh.position.y += Math.sin(Date.now() * 0.003 + i) * 0.002;
+
+            // Pulsing glow effect
+            const pulse = 0.4 + Math.sin(Date.now() * 0.005 + i * 0.5) * 0.2;
+            if (star.mesh.userData.light) {
+                star.mesh.userData.light.intensity = 1.5 + pulse;
+            }
+            if (star.mesh.userData.glow) {
+                star.mesh.userData.glow.material.opacity = 0.4 + pulse * 0.4;
+                const glowScale = 2.5 + pulse;
+                star.mesh.userData.glow.scale.set(glowScale, glowScale, 1);
+            }
         }
     });
 
