@@ -366,7 +366,7 @@ canvas {
     opacity: 1;
 }
 
-/* Editor Toolbar */
+/* Editor Toolbar - Apple Style */
 .editor-toolbar {
     position: absolute;
     left: 80px;
@@ -374,87 +374,111 @@ canvas {
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    background: var(--bg-secondary);
-    padding: 12px;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-soft);
-    border: 2px solid var(--accent-purple);
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 16px 10px;
+    border-radius: 22px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
 }
 
 .editor-title {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    color: var(--accent-purple);
+    color: var(--text-secondary);
     text-align: center;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.editor-divider {
-    height: 1px;
-    background: #e0e0e0;
-    margin: 4px 0;
+.editor-toolbar .tool-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: transparent;
+    border: none;
+    transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-.btn-editor {
-    background: var(--accent-purple);
+.editor-toolbar .tool-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    transform: none;
 }
 
-.btn-editor.active {
-    background: var(--accent-green);
-    box-shadow: 0 0 12px var(--accent-green);
-}
-
-.btn-export {
-    background: var(--accent-blue);
-}
-
-.btn-import {
-    background: var(--accent-orange);
-}
-
-/* Code Modal */
-.code-modal {
-    width: 500px;
-    max-width: 90vw;
-}
-
-.code-modal textarea {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: var(--radius-sm);
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 12px;
-    resize: vertical;
-    margin-bottom: 16px;
-}
-
-.modal-buttons {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-}
-
-.modal-btn.secondary {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-}
-
-.modal-btn.secondary:hover {
-    background: #e0e0e0;
-}
-
-/* Editor active tool highlight */
 .editor-toolbar .tool-btn.active {
-    background: var(--accent-purple);
+    background: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .editor-toolbar .tool-btn.active svg {
     stroke: white;
     fill: white;
+}
+
+.editor-toolbar .tool-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+}
+
+.editor-divider {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.06);
+    margin: 8px 4px;
+}
+
+.editor-toolbar .action-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+}
+
+.editor-toolbar .tooltip {
+    left: 54px;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(10px);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* Editor action buttons */
+.btn-test {
+    background: linear-gradient(180deg, #34d058 0%, #28a745 100%);
+    box-shadow: 0 2px 8px rgba(52, 199, 89, 0.3);
+}
+
+.btn-stop {
+    background: linear-gradient(180deg, #ff6b6b 0%, #ff2d55 100%);
+    box-shadow: 0 2px 8px rgba(255, 45, 85, 0.3);
+}
+
+.btn-export {
+    background: linear-gradient(180deg, #5ac8fa 0%, #007aff 100%);
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.btn-import {
+    background: linear-gradient(180deg, #ffcc00 0%, #ff9500 100%);
+    box-shadow: 0 2px 8px rgba(255, 149, 0, 0.3);
+}
+
+/* Cursor styles for editor */
+.editor-select-mode {
+    cursor: default;
+}
+
+.editor-place-mode {
+    cursor: crosshair;
+}
+
+.editor-delete-mode {
+    cursor: not-allowed;
 }
 
 /* Menu Overlay */

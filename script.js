@@ -17,10 +17,10 @@ const gameState = {
     dragEnd: null
 };
 
-// Editor State
+// Editor State - replace existing
 const editorState = {
     isEditorMode: false,
-    currentTool: 'star',
+    currentTool: 'select',  // Changed default to select
     levelObjects: {
         stars: [],
         bowl: { x: 0, y: -11.5, z: 0 },
@@ -28,6 +28,16 @@ const editorState = {
         boosters: [],
         spikes: []
     }
+};
+
+// Selection state for mouse mode
+const selectionState = {
+    selectedObject: null,
+    isDraggingObject: false,
+    dragOffset: new THREE.Vector3(),
+    mouseDownPos: null,
+    mouseDownTime: 0,
+    hasDragged: false
 };
 
 // Editor preview state
@@ -42,8 +52,8 @@ const testModeState = {
     savedLevelCode: null
 };
 
-// Tool display info
 const toolInfo = {
+    select: { icon: '🖱️', name: 'Select & Move' },
     star: { icon: '⭐', name: 'Star' },
     bowl: { icon: '🥣', name: 'Bowl' },
     wall: { icon: '🧱', name: 'Wall' },
@@ -1365,24 +1375,71 @@ function getWorldPosition(event) {
     return intersection;
 }
 
-// Event handlers
 function onMouseDown(event) {
     if (event.button !== 0) return;
     if (event.target !== renderer.domElement) return;
 
     const pos = getWorldPosition(event);
 
+    // Store mouse down info for drag detection
+    selectionState.mouseDownPos = pos.clone();
+    selectionState.mouseDownTime = Date.now();
+    selectionState.hasDragged = false;
+
     if (editorState.isEditorMode) {
-        handleEditorClick(pos, event);
+        const tool = editorState.currentTool;
+
+        // Select tool - try to pick an object
+        if (tool === 'select') {
+            const picked = pickObjectAt(pos);
+            if (picked) {
+                // Restore previous selection's material
+                if (selectionState.selectedObject && selectionState.selectedObject !== picked) {
+                    restoreObjectMaterial(selectionState.selectedObject);
+                }
+                selectionState.selectedObject = picked;
+                selectionState.isDraggingObject = true;
+                selectionState.dragOffset = new THREE.Vector3().subVectors(
+                    new THREE.Vector3(picked.mesh.position.x, picked.mesh.position.y, picked.mesh.position.z),
+                    pos
+                );
+                controls.enabled = false;
+                return;
+            } else {
+                // Restore material when deselecting
+                restoreObjectMaterial(selectionState.selectedObject);
+                selectionState.selectedObject = null;
+                selectionState.isDraggingObject = false;
+                controls.enabled = true;
+                return;
+            }
+        }
+
+        // Delete tool
+        if (tool === 'delete') {
+            deleteObjectAt(pos);
+            return;
+        }
+
+        // Drag-based tools (wall, booster)
+        if (tool === 'wall' || tool === 'booster') {
+            gameState.isDragging = true;
+            gameState.dragStart = pos;
+            controls.enabled = false;
+            return;
+        }
+
+        // Click-based tools - disable controls until mouseup
+        controls.enabled = false;
         return;
     }
 
+    // Normal gameplay - ramp placement
     gameState.isDragging = true;
     gameState.dragStart = pos;
     document.getElementById('preview-info').classList.add('visible');
     controls.enabled = false;
 }
-
 function handleEditorClick(pos, event) {
     switch (editorState.currentTool) {
         case 'star':
@@ -1509,43 +1566,347 @@ function deleteObjectAt(pos) {
     }
 }
 
+// Handle portal placement separately
+function handlePortalPlacement(pos) {
+    if (previewState.portalPlacingFirst) {
+        pendingPortal = createPortal(pos, true);
+        previewState.portalPlacingFirst = false;
+        updateToolIndicator('portal');
+        showToast('Now place the exit portal (blue)');
+    } else {
+        const portalB = createPortal(pos, false);
+        pendingPortal.linkedPortal = portalB;
+        portalB.linkedPortal = pendingPortal;
+        editorObjects.portals.push(pendingPortal);
+        editorObjects.portals.push(portalB);
+        pendingPortal = null;
+        previewState.portalPlacingFirst = true;
+        updateToolIndicator('portal');
+    }
+}
+
+// Pick object at position for selection
+// Pick object at position for selection
+function pickObjectAt(pos) {
+    const threshold = 1.5;
+    let closest = null;
+    let closestDist = threshold;
+
+    // Check stars
+    for (const star of gameState.starObjects) {
+        const dist = star.mesh.position.distanceTo(pos);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = { type: 'star', mesh: star.mesh, data: star };
+        }
+    }
+
+    // Check walls - use line segment distance
+    for (const wall of editorObjects.walls) {
+        if (wall.start && wall.end) {
+            const dist = distanceToLineSegment(pos, wall.start, wall.end);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = { type: 'wall', mesh: wall.mesh, data: wall };
+            }
+        } else {
+            const dist = wall.mesh.position.distanceTo(pos);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = { type: 'wall', mesh: wall.mesh, data: wall };
+            }
+        }
+    }
+
+    // Check boosters - use line segment distance
+    for (const booster of editorObjects.boosters) {
+        if (booster.start && booster.end) {
+            const dist = distanceToLineSegment(pos, booster.start, booster.end);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = { type: 'booster', mesh: booster.mesh, data: booster };
+            }
+        } else {
+            const dist = booster.mesh.position.distanceTo(pos);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = { type: 'booster', mesh: booster.mesh, data: booster };
+            }
+        }
+    }
+
+    // Check ramps - use length for better selection
+    for (const ramp of gameState.placedObjects) {
+        const rampPos = ramp.mesh.position;
+        const rampLength = ramp.mesh.geometry.parameters.width || 2;
+        const rampAngle = ramp.mesh.rotation.z;
+
+        // Calculate start and end points of ramp
+        const halfLength = rampLength / 2;
+        const rampStart = {
+            x: rampPos.x - Math.cos(rampAngle) * halfLength,
+            y: rampPos.y - Math.sin(rampAngle) * halfLength,
+            z: rampPos.z
+        };
+        const rampEnd = {
+            x: rampPos.x + Math.cos(rampAngle) * halfLength,
+            y: rampPos.y + Math.sin(rampAngle) * halfLength,
+            z: rampPos.z
+        };
+
+        const dist = distanceToLineSegment(pos, rampStart, rampEnd);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = { type: 'ramp', mesh: ramp.mesh, data: ramp };
+        }
+    }
+
+    // Check spikes
+    for (const spike of editorObjects.spikes) {
+        const spikePos = new THREE.Vector3(spike.position.x, spike.position.y, spike.position.z);
+        const dist = spikePos.distanceTo(pos);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = { type: 'spike', mesh: spike.mesh, data: spike };
+        }
+    }
+
+    // Check portals
+    for (const portal of editorObjects.portals) {
+        const portalPos = new THREE.Vector3(portal.position.x, portal.position.y, portal.position.z);
+        const dist = portalPos.distanceTo(pos);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = { type: 'portal', mesh: portal.mesh, data: portal };
+        }
+    }
+
+    // Check bowl (larger threshold)
+    const bowlDist = bowl.position.distanceTo(pos);
+    if (bowlDist < 3 && bowlDist < closestDist + 1.5) {
+        closest = { type: 'bowl', mesh: bowl, data: { position: bowlPosition } };
+    }
+
+    return closest;
+}
+
+// Calculate distance from point to line segment
+function distanceToLineSegment(point, lineStart, lineEnd) {
+    const px = point.x;
+    const py = point.y;
+    const x1 = lineStart.x;
+    const y1 = lineStart.y;
+    const x2 = lineEnd.x;
+    const y2 = lineEnd.y;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared === 0) {
+        // Line segment is a point
+        return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+    }
+
+    // Calculate projection parameter
+    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
+
+    // Clamp t to [0, 1] to stay within segment
+    t = Math.max(0, Math.min(1, t));
+
+    // Find closest point on segment
+    const closestX = x1 + t * dx;
+    const closestY = y1 + t * dy;
+
+    // Return distance to closest point
+    return Math.sqrt((px - closestX) * (px - closestX) + (py - closestY) * (py - closestY));
+}
+// Update object position when dragging
+function updateObjectPosition(obj, newPos) {
+    if (!obj || !obj.mesh) return;
+
+    switch (obj.type) {
+        case 'star':
+            obj.mesh.position.set(newPos.x, newPos.y, newPos.z);
+            if (obj.data.body) {
+                obj.data.body.position.set(newPos.x, newPos.y, newPos.z);
+            }
+            break;
+
+        case 'wall':
+        case 'booster':
+            const offsetWall = new THREE.Vector3().subVectors(newPos, obj.mesh.position);
+            obj.mesh.position.set(newPos.x, newPos.y, newPos.z);
+            if (obj.data.body) {
+                obj.data.body.position.set(newPos.x, newPos.y, newPos.z);
+            }
+            if (obj.data.start) {
+                obj.data.start.x += offsetWall.x;
+                obj.data.start.y += offsetWall.y;
+                obj.data.start.z += offsetWall.z;
+            }
+            if (obj.data.end) {
+                obj.data.end.x += offsetWall.x;
+                obj.data.end.y += offsetWall.y;
+                obj.data.end.z += offsetWall.z;
+            }
+            if (obj.data.center) {
+                obj.data.center.x = newPos.x;
+                obj.data.center.y = newPos.y;
+                obj.data.center.z = newPos.z;
+            }
+            break;
+
+        case 'ramp':
+            const offsetRamp = new THREE.Vector3().subVectors(newPos, obj.mesh.position);
+            obj.mesh.position.set(newPos.x, newPos.y, newPos.z);
+            if (obj.data.body) {
+                obj.data.body.position.set(newPos.x, newPos.y, newPos.z);
+            }
+            break;
+
+        case 'spike':
+            obj.mesh.position.set(newPos.x, newPos.y, newPos.z);
+            obj.data.position.x = newPos.x;
+            obj.data.position.y = newPos.y;
+            obj.data.position.z = newPos.z;
+            if (obj.data.body) {
+                obj.data.body.position.set(newPos.x, newPos.y, newPos.z);
+            }
+            break;
+
+        case 'portal':
+            obj.mesh.position.set(newPos.x, newPos.y, newPos.z);
+            obj.data.position.x = newPos.x;
+            obj.data.position.y = newPos.y;
+            obj.data.position.z = newPos.z;
+            break;
+
+        case 'bowl':
+            bowlPosition.set(newPos.x, newPos.y, newPos.z);
+            bowl.position.set(newPos.x, newPos.y, newPos.z);
+            bowlBody.position.set(newPos.x, newPos.y, newPos.z);
+            break;
+    }
+}
+
+// Restore original material when deselecting
+function restoreObjectMaterial(obj) {
+    if (!obj || !obj.mesh) return;
+
+    const mesh = obj.mesh;
+    if (mesh.userData.originalMaterial) {
+        mesh.material = mesh.userData.originalMaterial;
+        mesh.userData.originalMaterial = null;
+        mesh.userData.isHighlighted = false;
+    } else if (mesh.userData.originalMaterials) {
+        mesh.userData.originalMaterials.forEach((item) => {
+            item.mesh.material = item.material;
+        });
+        mesh.userData.originalMaterials = null;
+        mesh.userData.isHighlighted = false;
+    }
+}
+
 function onMouseMove(event) {
+    const pos = getWorldPosition(event);
+
+    // Check if we've dragged far enough to count as a drag
+    if (selectionState.mouseDownPos) {
+        const dragDist = pos.distanceTo(selectionState.mouseDownPos);
+        if (dragDist > 0.3) {
+            selectionState.hasDragged = true;
+        }
+    }
+
+    // Handle object dragging in select mode
+    if (editorState.isEditorMode && selectionState.isDraggingObject && selectionState.selectedObject) {
+        const newPos = pos.clone().add(selectionState.dragOffset);
+        updateObjectPosition(selectionState.selectedObject, newPos);
+        return;
+    }
+
+    // Update ghost preview in editor mode (only for placement tools, not select)
+    if (editorState.isEditorMode && !gameState.isDragging && !selectionState.isDraggingObject) {
+        const tool = editorState.currentTool;
+        if (['star', 'bowl', 'spike', 'portal', 'delete'].includes(tool)) {
+            if (!previewState.ghostMesh) {
+                createGhostPreview(tool, pos);
+            } else {
+                updateGhostPreview(pos);
+            }
+        } else {
+            clearGhostPreview();
+        }
+    }
+
     if (!gameState.isDragging) return;
 
-    gameState.dragEnd = getWorldPosition(event);
+    gameState.dragEnd = pos;
     updatePreview(gameState.dragStart, gameState.dragEnd);
 }
 
 function onMouseUp(event) {
-    if (!gameState.isDragging) return;
+    const pos = getWorldPosition(event);
+    const clickDuration = Date.now() - selectionState.mouseDownTime;
+    const wasQuickClick = clickDuration < 300 && !selectionState.hasDragged;
 
-    gameState.isDragging = false;
-    document.getElementById('preview-info').classList.remove('visible');
-    controls.enabled = true;
+    // Handle select mode drag end
+    if (selectionState.isDraggingObject) {
+        selectionState.isDraggingObject = false;
+        // Keep the object selected after dragging
+        selectionState.mouseDownPos = null;
+        controls.enabled = true;
+        return;
+    }
 
-    if (gameState.dragStart && gameState.dragEnd) {
+    // Handle editor click-to-place tools
+    if (editorState.isEditorMode && wasQuickClick) {
+        const tool = editorState.currentTool;
+
+        if (tool === 'star') {
+            createStar(new THREE.Vector3(pos.x, pos.y, pos.z), gameState.starObjects.length);
+            gameState.totalStars = gameState.starObjects.length;
+            updateStarDisplay();
+        } else if (tool === 'bowl') {
+            bowlPosition.set(pos.x, pos.y, pos.z);
+            bowl.position.copy(bowlPosition);
+            bowlBody.position.copy(bowlPosition);
+        } else if (tool === 'spike') {
+            createSpike(pos);
+        } else if (tool === 'portal') {
+            handlePortalPlacement(pos);
+        }
+
+        clearGhostPreview();
+    }
+
+    // Handle drag-based placements (only if we actually dragged)
+    if (gameState.isDragging && gameState.dragStart && gameState.dragEnd && selectionState.hasDragged) {
         if (editorState.isEditorMode) {
             if (editorState.currentTool === 'wall') {
                 createWall(gameState.dragStart, gameState.dragEnd);
             } else if (editorState.currentTool === 'booster') {
-                const direction = new THREE.Vector3().subVectors(gameState.dragEnd, gameState.dragStart).normalize();
-                createBooster(gameState.dragStart, direction, 20);
+                createBooster(gameState.dragStart, gameState.dragEnd);
             }
         } else {
             createRamp(gameState.dragStart, gameState.dragEnd, gameState.currentTool);
         }
     }
 
+    // Reset states
+    gameState.isDragging = false;
     gameState.dragStart = null;
     gameState.dragEnd = null;
+    selectionState.mouseDownPos = null;
+    document.getElementById('preview-info').classList.remove('visible');
+    controls.enabled = true;
 
     if (previewMesh) {
         scene.remove(previewMesh);
         previewMesh = null;
     }
 }
-
-
 document.getElementById('btn-play').addEventListener('click', () => {
     if (!gameState.isPlaying) {
         gameState.isPlaying = true;
@@ -2090,6 +2451,51 @@ function animate() {
         portal.mesh.rotation.z += 0.02;
     });
 
+    // Highlight selected object (yellow tint)
+    if (editorState.isEditorMode && selectionState.selectedObject && selectionState.selectedObject.mesh) {
+        const mesh = selectionState.selectedObject.mesh;
+
+        // Store original material if not stored
+        if (!mesh.userData.originalMaterial) {
+            if (mesh.material) {
+                mesh.userData.originalMaterial = mesh.material.clone();
+            } else if (mesh.children) {
+                mesh.userData.originalMaterials = [];
+                mesh.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        mesh.userData.originalMaterials.push({ mesh: child, material: child.material.clone() });
+                    }
+                });
+            }
+            mesh.userData.isHighlighted = false;
+        }
+
+        // Apply yellow highlight
+        if (!mesh.userData.isHighlighted) {
+            if (mesh.material) {
+                mesh.material = new THREE.MeshStandardMaterial({
+                    color: 0xffdd00,
+                    emissive: 0xffdd00,
+                    emissiveIntensity: 0.3,
+                    roughness: 0.3,
+                    metalness: 0.5
+                });
+            } else if (mesh.children) {
+                mesh.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshStandardMaterial({
+                            color: 0xffdd00,
+                            emissive: 0xffdd00,
+                            emissiveIntensity: 0.3,
+                            roughness: 0.3,
+                            metalness: 0.5
+                        });
+                    }
+                });
+            }
+            mesh.userData.isHighlighted = true;
+        }
+    }
     // Check collisions
     checkCollisions();
 
@@ -2135,9 +2541,16 @@ document.getElementById('btn-editor').addEventListener('click', () => {
     document.getElementById('editor-toolbar').style.display = editorState.isEditorMode ? 'flex' : 'none';
     document.getElementById('btn-editor').classList.toggle('active', editorState.isEditorMode);
 
+    // Reset selection state
+    selectionState.selectedObject = null;
+    selectionState.isDraggingObject = false;
+
     if (editorState.isEditorMode) {
+        editorState.currentTool = 'select';
+        document.querySelectorAll('[data-editor-tool]').forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-editor-tool="select"]').classList.add('active');
         document.querySelector('.instructions').innerHTML =
-            '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects';
+            '<strong>Editor Mode:</strong> Select & drag objects, or choose a tool to place';
         updateToolIndicator(editorState.currentTool);
     } else {
         document.querySelector('.instructions').innerHTML =
@@ -2150,12 +2563,21 @@ document.getElementById('btn-editor').addEventListener('click', () => {
 // Editor tool selection
 document.querySelectorAll('[data-editor-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
+        const newTool = btn.dataset.editorTool;
+
         document.querySelectorAll('[data-editor-tool]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        editorState.currentTool = btn.dataset.editorTool;
+        editorState.currentTool = newTool;
+
+        // Restore material of previously selected object
+        restoreObjectMaterial(selectionState.selectedObject);
+
+        // Clear selection when switching tools
+        selectionState.selectedObject = null;
+        selectionState.isDraggingObject = false;
 
         // Reset portal placement state when switching tools
-        if (btn.dataset.editorTool !== 'portal') {
+        if (newTool !== 'portal') {
             previewState.portalPlacingFirst = true;
             if (pendingPortal) {
                 scene.remove(pendingPortal.mesh);
@@ -2212,8 +2634,13 @@ document.getElementById('btn-menu').addEventListener('click', () => {
 document.getElementById('btn-editor-mode').addEventListener('click', () => {
     document.getElementById('menu-overlay').classList.add('hidden');
     editorState.isEditorMode = true;
+    editorState.currentTool = 'select';
     document.getElementById('editor-toolbar').style.display = 'flex';
     document.getElementById('btn-editor').classList.add('active');
+
+    // Set select tool as active
+    document.querySelectorAll('[data-editor-tool]').forEach(b => b.classList.remove('active'));
+    document.querySelector('[data-editor-tool="select"]').classList.add('active');
 
     // Clear everything for blank level
     clearLevel();
@@ -2233,7 +2660,8 @@ document.getElementById('btn-editor-mode').addEventListener('click', () => {
 
     document.getElementById('level-display').textContent = 'Editor';
     document.querySelector('.instructions').innerHTML =
-        '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects • Export to save your level';
+        '<strong>Editor Mode:</strong> Select & drag objects, or choose a tool to place';
+    updateToolIndicator('select');
 });
 
 // Test mode - play level in editor
