@@ -456,3 +456,201 @@ canvas {
     stroke: white;
     fill: white;
 }
+
+/* Menu Overlay */
+.menu-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(245, 245, 247, 0.95);
+    backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 1;
+    transition: opacity 0.4s ease;
+}
+
+.menu-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.menu-container {
+    text-align: center;
+    max-width: 600px;
+    width: 90%;
+    padding: 40px;
+}
+
+.menu-title {
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.menu-subtitle {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+.levels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.level-card {
+    aspect-ratio: 1;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-soft);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.level-card:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-medium);
+}
+
+.level-card.completed {
+    background: linear-gradient(135deg, var(--accent-green), #2da44e);
+    color: white;
+}
+
+.level-card.completed .level-stars {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.level-card.current {
+    background: linear-gradient(135deg, var(--accent-blue), #0077ed);
+    color: white;
+    box-shadow: 0 4px 20px rgba(0, 113, 227, 0.4);
+}
+
+.level-card.locked {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.level-card.locked:hover {
+    transform: none;
+}
+
+.level-card.shake {
+    animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20% {
+        transform: translateX(-8px);
+    }
+
+    40% {
+        transform: translateX(8px);
+    }
+
+    60% {
+        transform: translateX(-6px);
+    }
+
+    80% {
+        transform: translateX(6px);
+    }
+}
+
+.level-number {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.level-stars {
+    font-size: 10px;
+    color: var(--accent-orange);
+}
+
+.level-lock {
+    font-size: 20px;
+}
+
+.menu-footer {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.menu-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--accent-purple);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.menu-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(175, 82, 222, 0.4);
+}
+
+/* Toast notification */
+.toast {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--text-primary);
+    color: white;
+    padding: 12px 24px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 200;
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Back to menu button */
+.btn-menu {
+    background: var(--text-secondary);
+}
+
+.btn-menu svg {
+    stroke: white;
+}

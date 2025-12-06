@@ -113,6 +113,13 @@
                     </svg>
                 </button>
 
+                <button class="action-btn btn-menu" id="btn-menu" title="Back to Menu">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke-width="2" />
+                        <polyline points="9 22 9 12 15 12 15 22" stroke-width="2" />
+                    </svg>
+                </button>
+
                 <button class="action-btn btn-editor" id="btn-editor" title="Toggle Editor">
                     <svg viewBox="0 0 24 24" stroke="white" fill="none">
                         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-width="2" />
@@ -131,7 +138,30 @@
             <div class="preview-info" id="preview-info">
                 Drag to set angle • Release to place
             </div>
+            <!-- Level Select Menu -->
+            <div class="menu-overlay" id="menu-overlay">
+                <div class="menu-container">
+                    <h1 class="menu-title">Ball Drop</h1>
+                    <p class="menu-subtitle">Guide the ball to collect stars and reach the bowl!</p>
+                    <div class="levels-grid" id="levels-grid">
+                        <!-- Levels will be populated by JS -->
+                    </div>
+                    <div class="menu-footer">
+                        <button class="menu-btn" id="btn-editor-mode">
+                            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" width="20" height="20">
+                                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-width="2" />
+                                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-width="2" />
+                            </svg>
+                            Level Editor
+                        </button>
+                    </div>
+                </div>
+            </div>
 
+            <!-- Locked Level Toast -->
+            <div class="toast" id="locked-toast">
+                🔒 Complete the previous level first!
+            </div>
             <!-- Win Modal -->
             <div class="modal-overlay" id="win-modal">
                 <div class="modal">

@@ -30,6 +30,137 @@ const editorState = {
     }
 };
 
+// Menu State
+const menuState = {
+    levels: [],
+    completedLevels: JSON.parse(localStorage.getItem('ballDropCompleted') || '[]'),
+    maxUnlocked: 1
+};
+
+// Load all available levels
+async function loadAllLevelData() {
+    menuState.levels = [];
+    let levelNum = 1;
+
+    while (true) {
+        try {
+            const response = await fetch(`levels/level${levelNum}.txt`);
+            if (!response.ok) break;
+            const code = await response.text();
+            menuState.levels.push({
+                num: levelNum,
+                code: code
+            });
+            levelNum++;
+        } catch (e) {
+            break;
+        }
+    }
+
+    // If no levels found, create a default
+    if (menuState.levels.length === 0) {
+        menuState.levels.push({
+            num: 1,
+            code: `BALL:0,12,0
+BOWL:0,-11.1,0
+STAR:-5,8,0
+STAR:5,6,0
+STAR:-3,2,0
+STAR:4,-2,0
+STAR:0,-6,0`
+        });
+    }
+
+    updateMaxUnlocked();
+    renderLevelMenu();
+}
+
+// Render level select menu
+function renderLevelMenu() {
+    const grid = document.getElementById('levels-grid');
+    grid.innerHTML = '';
+
+    menuState.levels.forEach((level, index) => {
+        const levelNum = index + 1;
+        const isCompleted = menuState.completedLevels.includes(levelNum);
+        const isUnlocked = levelNum <= menuState.maxUnlocked;
+        const isCurrent = levelNum === menuState.maxUnlocked && !isCompleted;
+
+        const card = document.createElement('button');
+        card.className = 'level-card';
+        if (isCompleted) card.classList.add('completed');
+        else if (isCurrent) card.classList.add('current');
+        else if (!isUnlocked) card.classList.add('locked');
+
+        card.innerHTML = `
+            <span class="level-number">${levelNum}</span>
+            ${isCompleted ? '<span class="level-stars">⭐⭐⭐⭐⭐</span>' : ''}
+            ${!isUnlocked && !isCurrent ? '<span class="level-lock">🔒</span>' : ''}
+        `;
+
+        card.addEventListener('click', () => handleLevelSelect(levelNum, isUnlocked || isCurrent, card));
+        grid.appendChild(card);
+    });
+}
+
+// Handle level selection
+function handleLevelSelect(levelNum, isUnlocked, cardElement) {
+    if (!isUnlocked) {
+        // Shake the card
+        cardElement.classList.add('shake');
+        setTimeout(() => cardElement.classList.remove('shake'), 500);
+
+        // Show toast
+        showToast('🔒 Complete the previous level first!');
+        return;
+    }
+
+    // Load the level
+    gameState.level = levelNum;
+    const levelData = menuState.levels[levelNum - 1];
+    if (levelData) {
+        loadLevelFromCode(levelData.code);
+    }
+    document.getElementById('level-display').textContent = `Level ${levelNum}`;
+
+    // Hide menu
+    document.getElementById('menu-overlay').classList.add('hidden');
+}
+
+// Show toast message
+function showToast(message) {
+    const toast = document.getElementById('locked-toast');
+    toast.textContent = message;
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2000);
+}
+
+// Show menu
+function showMenu() {
+    updateMaxUnlocked();
+    renderLevelMenu();
+    document.getElementById('menu-overlay').classList.remove('hidden');
+}
+
+// Mark level as completed
+function completeLevel(levelNum) {
+    if (!menuState.completedLevels.includes(levelNum)) {
+        menuState.completedLevels.push(levelNum);
+        localStorage.setItem('ballDropCompleted', JSON.stringify(menuState.completedLevels));
+        updateMaxUnlocked();
+    }
+}
+
+// Calculate max unlocked level
+function updateMaxUnlocked() {
+    menuState.maxUnlocked = 1;
+    for (let i = 1; i <= menuState.levels.length; i++) {
+        if (menuState.completedLevels.includes(i)) {
+            menuState.maxUnlocked = Math.max(menuState.maxUnlocked, i + 1);
+        }
+    }
+}
+
 // Level object meshes for editor
 const editorObjects = {
     walls: [],
@@ -1280,18 +1411,20 @@ async function nextLevel() {
     document.getElementById('win-modal').classList.remove('active');
     gameState.level++;
 
-    const loaded = await loadLevelFile(gameState.level);
-    if (!loaded) {
-        // Fallback to generated level
-        document.getElementById('level-display').textContent = `Level ${gameState.level}`;
-        clearLevel();
-        createStars();
+    // Check if there's a next level
+    if (gameState.level > menuState.levels.length) {
+        // No more levels, return to menu
+        showToast('🎉 You completed all levels!');
+        setTimeout(showMenu, 1000);
+        return;
+    }
 
-        const angle = gameState.level * 0.5;
-        bowlPosition.x = Math.sin(angle) * 3;
-        bowlPosition.y = -11.1;
-        bowl.position.copy(bowlPosition);
-        bowlBody.position.copy(bowlPosition);
+    const levelData = menuState.levels[gameState.level - 1];
+    if (levelData) {
+        loadLevelFromCode(levelData.code);
+        document.getElementById('level-display').textContent = `Level ${gameState.level}`;
+    } else {
+        showMenu();
     }
 
     resetBall();
@@ -1502,6 +1635,7 @@ function updateBurstParticles(delta) {
     }
 }
 function showWinModal() {
+    completeLevel(gameState.level);
     const modal = document.getElementById('win-modal');
     modal.classList.add('active');
 }
@@ -1719,10 +1853,54 @@ document.getElementById('btn-code-confirm').addEventListener('click', () => {
     document.getElementById('code-modal').classList.remove('active');
 });
 
-// Initialize
-createBall();
-createBowl();
-createStars();
-animate();
+// Back to menu button
+document.getElementById('btn-menu').addEventListener('click', () => {
+    resetBall();
+    showMenu();
+});
 
-console.log('🎮 Ball Drop Game initialized! Click and drag to place ramps, then press play!');
+// Editor mode from menu
+document.getElementById('btn-editor-mode').addEventListener('click', () => {
+    document.getElementById('menu-overlay').classList.add('hidden');
+    editorState.isEditorMode = true;
+    document.getElementById('editor-toolbar').style.display = 'flex';
+    document.getElementById('btn-editor').classList.add('active');
+
+    // Clear everything for blank level
+    clearLevel();
+
+    // Reset ball to top
+    ballStartPosition.set(0, 12, 0);
+    resetBall();
+
+    // Move bowl off-screen until placed
+    bowlPosition.set(100, 100, 100);
+    bowl.position.copy(bowlPosition);
+    bowlBody.position.copy(bowlPosition);
+
+    // Reset star count display
+    gameState.totalStars = 0;
+    updateStarDisplay();
+
+    document.getElementById('level-display').textContent = 'Editor';
+    document.querySelector('.instructions').innerHTML =
+        '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects • Export to save your level';
+});
+
+// Initialize
+async function init() {
+    createBall();
+    createBowl();
+
+    // Load all level data for menu
+    await loadAllLevelData();
+
+    // Show menu on start
+    showMenu();
+
+    animate();
+}
+
+init();
+
+console.log('🎮 Ball Drop Game initialized!');
