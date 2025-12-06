@@ -654,3 +654,62 @@ canvas {
 .btn-menu svg {
     stroke: white;
 }
+
+/* Tool Indicator */
+.tool-indicator {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-secondary);
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-soft);
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    border: 2px solid var(--accent-purple);
+}
+
+.tool-indicator.visible {
+    display: flex;
+}
+
+.tool-indicator-icon {
+    font-size: 18px;
+}
+
+/* Test button */
+.btn-test {
+    background: linear-gradient(135deg, var(--accent-green), #2da44e);
+}
+
+.btn-stop {
+    background: var(--accent-pink);
+}
+
+.btn-stop.hidden {
+    display: none;
+}
+
+.btn-test.hidden {
+    display: none;
+}
+
+/* Ghost preview */
+.ghost-preview {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Portal colors */
+.portal-a {
+    color: #ff6b00;
+}
+
+.portal-b {
+    color: #00b3ff;
+}

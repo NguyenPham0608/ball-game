@@ -30,6 +30,29 @@ const editorState = {
     }
 };
 
+// Editor preview state
+const previewState = {
+    ghostMesh: null,
+    portalPlacingFirst: true  // true = placing portal A, false = placing portal B
+};
+
+// Test mode state
+const testModeState = {
+    isTesting: false,
+    savedLevelCode: null
+};
+
+// Tool display info
+const toolInfo = {
+    star: { icon: '⭐', name: 'Star' },
+    bowl: { icon: '🥣', name: 'Bowl' },
+    wall: { icon: '🧱', name: 'Wall' },
+    booster: { icon: '🌈', name: 'Speed Pad' },
+    spike: { icon: '🔺', name: 'Spike' },
+    portal: { icon: '🌀', name: 'Portal' },
+    delete: { icon: '🗑️', name: 'Delete' }
+};
+
 // Menu State
 const menuState = {
     levels: [],
@@ -161,11 +184,12 @@ function updateMaxUnlocked() {
     }
 }
 
-// Level object meshes for editor
+// Add portals to editorObjects
 const editorObjects = {
     walls: [],
     boosters: [],
-    spikes: []
+    spikes: [],
+    portals: []
 };
 
 // Audio setup for collision sounds
@@ -678,39 +702,134 @@ function createWall(start, end) {
 }
 
 // Create booster
-function createBooster(position, direction, strength = 20) {
-    const geometry = new THREE.ConeGeometry(0.5, 1.2, 8);
-    const material = new THREE.MeshStandardMaterial({
-        color: 0x0071e3,
-        emissive: 0x0071e3,
-        emissiveIntensity: 0.5,
-        roughness: 0.2,
-        metalness: 0.8
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(position.x, position.y, position.z);
+// Create booster (rainbow speed pad)
+function createBooster(start, end) {
+    const startVec = new THREE.Vector3(start.x, start.y, start.z);
+    const endVec = new THREE.Vector3(end.x, end.y, end.z);
+    const direction = endVec.clone().sub(startVec);
+    const length = direction.length();
+    if (length < 0.5) return null;
 
-    // Point in boost direction
-    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, dir);
-    mesh.quaternion.copy(quaternion);
+    const center = startVec.clone().add(endVec).multiplyScalar(0.5);
+    const angle = Math.atan2(direction.y, direction.x);
+
+    // Rainbow gradient material using vertex colors
+    const geometry = new THREE.BoxGeometry(length, 0.15, 2, 10, 1, 1);
+
+    // Apply rainbow colors to vertices
+    const colors = [];
+    const positions = geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const t = (x / length) + 0.5; // normalize to 0-1
+        const color = new THREE.Color();
+        color.setHSL(t, 1, 0.5);
+        colors.push(color.r, color.g, color.b);
+    }
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    const material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.3,
+        metalness: 0.7,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.1
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(center);
+    mesh.rotation.z = angle;
     mesh.castShadow = true;
+    mesh.receiveShadow = true;
     scene.add(mesh);
 
-    // Trigger zone (no physics body, just detection)
+    // Physics body
+    const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.075, 1));
+    const body = new CANNON.Body({ mass: 0, material: rampMaterial });
+    body.addShape(shape);
+    body.position.copy(center);
+    body.quaternion.setFromEuler(0, 0, angle);
+    world.addBody(body);
+
+    // Store boost direction (along the pad)
+    const boostDir = direction.clone().normalize();
+
     const boosterData = {
         mesh,
-        position: { ...position },
-        direction: { x: dir.x, y: dir.y, z: dir.z },
-        strength,
+        body,
+        start: { ...start },
+        end: { ...end },
+        center: { x: center.x, y: center.y, z: center.z },
+        direction: { x: boostDir.x, y: boostDir.y, z: boostDir.z },
+        length,
+        angle,
         type: 'booster'
     };
     editorObjects.boosters.push(boosterData);
     return boosterData;
 }
 
-// Create spike
+// Create portal
+function createPortal(position, isPortalA = true) {
+    const color = isPortalA ? 0xff6b00 : 0x00b3ff; // Orange for A, Blue for B
+
+    // Outer ring
+    const ringGeometry = new THREE.TorusGeometry(0.8, 0.12, 16, 32);
+    const ringMaterial = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.5,
+        roughness: 0.2,
+        metalness: 0.8
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+
+    // Inner swirl effect
+    const innerGeometry = new THREE.CircleGeometry(0.65, 32);
+    const innerMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    const inner = new THREE.Mesh(innerGeometry, innerMaterial);
+
+    const group = new THREE.Group();
+    group.add(ring);
+    group.add(inner);
+    group.position.set(position.x, position.y, position.z);
+    group.userData.isPortalA = isPortalA;
+    group.userData.portalColor = color;
+    scene.add(group);
+
+    const portalData = {
+        mesh: group,
+        position: { ...position },
+        isPortalA,
+        linkedPortal: null,
+        type: 'portal'
+    };
+
+    return portalData;
+}
+
+// Create portal pair
+function createPortalPair(posA, posB) {
+    const portalA = createPortal(posA, true);
+    const portalB = createPortal(posB, false);
+
+    // Link them
+    portalA.linkedPortal = portalB;
+    portalB.linkedPortal = portalA;
+
+    editorObjects.portals.push(portalA);
+    editorObjects.portals.push(portalB);
+
+    return { portalA, portalB };
+}
+
+// Temporary portal storage for placement
+let pendingPortal = null;
 // Create spike
 function createSpike(position) {
     // Raycast down to find the lowest platform/ground
@@ -772,6 +891,94 @@ function createSpike(position) {
     editorObjects.spikes.push(spikeData);
     return spikeData;
 }
+// Create ghost preview mesh
+function createGhostPreview(tool, position) {
+    clearGhostPreview();
+
+    let ghost = null;
+
+    switch (tool) {
+        case 'star':
+            const starShape = new THREE.Shape();
+            const outerRadius = 0.5;
+            const innerRadius = 0.2;
+            for (let i = 0; i < 10; i++) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                if (i === 0) starShape.moveTo(x, y);
+                else starShape.lineTo(x, y);
+            }
+            starShape.closePath();
+            const starGeo = new THREE.ExtrudeGeometry(starShape, { depth: 0.15, bevelEnabled: false });
+            ghost = new THREE.Mesh(starGeo, new THREE.MeshBasicMaterial({ color: 0xff9500, transparent: true, opacity: 0.4 }));
+            break;
+
+        case 'bowl':
+            const bowlGeo = new THREE.CylinderGeometry(2.5, 1.5, 1.5, 32, 1, true);
+            ghost = new THREE.Mesh(bowlGeo, new THREE.MeshBasicMaterial({ color: 0x34c759, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+            break;
+
+        case 'spike':
+            const spikeGeo = new THREE.ConeGeometry(0.3, 1, 8);
+            ghost = new THREE.Mesh(spikeGeo, new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.4 }));
+            break;
+
+        case 'portal':
+            const portalGeo = new THREE.TorusGeometry(0.8, 0.12, 16, 32);
+            const portalColor = previewState.portalPlacingFirst ? 0xff6b00 : 0x00b3ff;
+            ghost = new THREE.Mesh(portalGeo, new THREE.MeshBasicMaterial({ color: portalColor, transparent: true, opacity: 0.4 }));
+            break;
+
+        case 'delete':
+            const deleteGeo = new THREE.RingGeometry(0.5, 0.7, 32);
+            ghost = new THREE.Mesh(deleteGeo, new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+            break;
+    }
+
+    if (ghost) {
+        ghost.position.copy(position);
+        ghost.className = 'ghost-preview';
+        scene.add(ghost);
+        previewState.ghostMesh = ghost;
+    }
+}
+
+// Update ghost preview position
+function updateGhostPreview(position) {
+    if (previewState.ghostMesh) {
+        previewState.ghostMesh.position.copy(position);
+    }
+}
+
+// Clear ghost preview
+function clearGhostPreview() {
+    if (previewState.ghostMesh) {
+        scene.remove(previewState.ghostMesh);
+        previewState.ghostMesh = null;
+    }
+}
+
+// Update tool indicator
+function updateToolIndicator(tool) {
+    const indicator = document.getElementById('tool-indicator');
+    const icon = document.getElementById('tool-indicator-icon');
+    const name = document.getElementById('tool-indicator-name');
+
+    if (editorState.isEditorMode && toolInfo[tool]) {
+        indicator.classList.add('visible');
+        icon.textContent = toolInfo[tool].icon;
+        name.textContent = toolInfo[tool].name;
+
+        // Show portal state
+        if (tool === 'portal') {
+            name.textContent = previewState.portalPlacingFirst ? 'Portal A (Orange)' : 'Portal B (Blue)';
+        }
+    } else {
+        indicator.classList.remove('visible');
+    }
+}
 // Create spike at exact position (for loading levels)
 function createSpikeAtPosition(position) {
     const spikeGeo = new THREE.ConeGeometry(0.3, 1, 8);
@@ -797,7 +1004,6 @@ function createSpikeAtPosition(position) {
     editorObjects.spikes.push(spikeData);
     return spikeData;
 }
-// Level code generation
 function generateLevelCode() {
     const lines = [];
 
@@ -805,7 +1011,7 @@ function generateLevelCode() {
     lines.push(`BALL:${ballStartPosition.x},${ballStartPosition.y},${ballStartPosition.z}`);
 
     // Bowl
-    lines.push(`BOWL:${bowlPosition.x},${bowlPosition.y},${bowlPosition.z}`);
+    lines.push(`BOWL:${bowlPosition.x.toFixed(2)},${bowlPosition.y.toFixed(2)},${bowlPosition.z.toFixed(2)}`);
 
     // Stars
     gameState.starObjects.forEach(star => {
@@ -818,14 +1024,25 @@ function generateLevelCode() {
         lines.push(`WALL:${wall.start.x.toFixed(2)},${wall.start.y.toFixed(2)},${wall.start.z.toFixed(2)},${wall.end.x.toFixed(2)},${wall.end.y.toFixed(2)},${wall.end.z.toFixed(2)}`);
     });
 
-    // Boosters
+    // Boosters (new format with start/end)
     editorObjects.boosters.forEach(booster => {
-        lines.push(`BOOSTER:${booster.position.x.toFixed(2)},${booster.position.y.toFixed(2)},${booster.position.z.toFixed(2)},${booster.direction.x.toFixed(2)},${booster.direction.y.toFixed(2)},${booster.direction.z.toFixed(2)},${booster.strength}`);
+        lines.push(`BOOSTER:${booster.start.x.toFixed(2)},${booster.start.y.toFixed(2)},${booster.start.z.toFixed(2)},${booster.end.x.toFixed(2)},${booster.end.y.toFixed(2)},${booster.end.z.toFixed(2)}`);
     });
 
     // Spikes
     editorObjects.spikes.forEach(spike => {
         lines.push(`SPIKE:${spike.position.x.toFixed(2)},${spike.position.y.toFixed(2)},${spike.position.z.toFixed(2)}`);
+    });
+
+    // Portals (save as pairs)
+    const savedPortals = new Set();
+    editorObjects.portals.forEach(portal => {
+        if (savedPortals.has(portal)) return;
+        if (portal.linkedPortal) {
+            lines.push(`PORTAL:${portal.position.x.toFixed(2)},${portal.position.y.toFixed(2)},${portal.position.z.toFixed(2)},${portal.linkedPortal.position.x.toFixed(2)},${portal.linkedPortal.position.y.toFixed(2)},${portal.linkedPortal.position.z.toFixed(2)}`);
+            savedPortals.add(portal);
+            savedPortals.add(portal.linkedPortal);
+        }
     });
 
     // Ramps
@@ -840,7 +1057,6 @@ function generateLevelCode() {
 
     return lines.join('\n');
 }
-
 // Parse level code
 function parseLevelCode(code) {
     const data = {
@@ -850,6 +1066,7 @@ function parseLevelCode(code) {
         walls: [],
         boosters: [],
         spikes: [],
+        portals: [],
         ramps: []
     };
 
@@ -876,14 +1093,22 @@ function parseLevelCode(code) {
                 });
                 break;
             case 'BOOSTER':
-                data.boosters.push({
-                    position: { x: values[0], y: values[1], z: values[2] },
-                    direction: { x: values[3], y: values[4], z: values[5] },
-                    strength: values[6] || 20
-                });
+                // New format: start and end positions
+                if (values.length >= 6) {
+                    data.boosters.push({
+                        start: { x: values[0], y: values[1], z: values[2] },
+                        end: { x: values[3], y: values[4], z: values[5] }
+                    });
+                }
                 break;
             case 'SPIKE':
                 data.spikes.push({ x: values[0], y: values[1], z: values[2] });
+                break;
+            case 'PORTAL':
+                data.portals.push({
+                    a: { x: values[0], y: values[1], z: values[2] },
+                    b: { x: values[3], y: values[4], z: values[5] }
+                });
                 break;
             case 'RAMP':
                 data.ramps.push({
@@ -897,7 +1122,6 @@ function parseLevelCode(code) {
 
     return data;
 }
-
 // Load level from code
 function loadLevelFromCode(code) {
     const data = parseLevelCode(code);
@@ -925,14 +1149,19 @@ function loadLevelFromCode(code) {
         createWall(wall.start, wall.end);
     });
 
-    // Create boosters
+    // Create boosters (new format)
     data.boosters.forEach(booster => {
-        createBooster(booster.position, booster.direction, booster.strength);
+        createBooster(booster.start, booster.end);
     });
 
     // Create spikes
     data.spikes.forEach(spike => {
         createSpikeAtPosition(spike);
+    });
+
+    // Create portals
+    data.portals.forEach(portalPair => {
+        createPortalPair(portalPair.a, portalPair.b);
     });
 
     // Create ramps from level data
@@ -942,7 +1171,6 @@ function loadLevelFromCode(code) {
 
     resetBall();
 }
-
 // Create ramp from saved data
 function createRampFromData(data) {
     const length = data.length;
@@ -988,6 +1216,7 @@ function clearLevel() {
     // Clear boosters
     editorObjects.boosters.forEach(obj => {
         scene.remove(obj.mesh);
+        if (obj.body) world.removeBody(obj.body);
     });
     editorObjects.boosters = [];
 
@@ -998,10 +1227,22 @@ function clearLevel() {
     });
     editorObjects.spikes = [];
 
+    // Clear portals
+    editorObjects.portals.forEach(obj => {
+        scene.remove(obj.mesh);
+    });
+    editorObjects.portals = [];
+
+    // Clear pending portal
+    if (pendingPortal) {
+        scene.remove(pendingPortal.mesh);
+        pendingPortal = null;
+    }
+    previewState.portalPlacingFirst = true;
+
     // Clear ramps
     clearAllRamps();
 }
-
 // Load level from file
 async function loadLevelFile(levelNum) {
     try {
@@ -1150,7 +1391,7 @@ function handleEditorClick(pos, event) {
             updateStarDisplay();
             break;
         case 'bowl':
-            bowlPosition.set(pos.x, -11.1, pos.z);
+            bowlPosition.set(pos.x, pos.y, pos.z);
             bowl.position.copy(bowlPosition);
             bowlBody.position.copy(bowlPosition);
             break;
@@ -1163,10 +1404,30 @@ function handleEditorClick(pos, event) {
         case 'spike':
             createSpike(pos);
             break;
+        case 'portal':
+            if (previewState.portalPlacingFirst) {
+                // Place first portal (orange)
+                pendingPortal = createPortal(pos, true);
+                previewState.portalPlacingFirst = false;
+                updateToolIndicator('portal');
+                showToast('Now place the exit portal (blue)');
+            } else {
+                // Place second portal (blue) and link them
+                const portalB = createPortal(pos, false);
+                pendingPortal.linkedPortal = portalB;
+                portalB.linkedPortal = pendingPortal;
+                editorObjects.portals.push(pendingPortal);
+                editorObjects.portals.push(portalB);
+                pendingPortal = null;
+                previewState.portalPlacingFirst = true;
+                updateToolIndicator('portal');
+            }
+            break;
         case 'delete':
             deleteObjectAt(pos);
             break;
     }
+    clearGhostPreview();
 }
 
 function deleteObjectAt(pos) {
@@ -1211,6 +1472,28 @@ function deleteObjectAt(pos) {
             scene.remove(editorObjects.spikes[i].mesh);
             world.removeBody(editorObjects.spikes[i].body);
             editorObjects.spikes.splice(i, 1);
+            return;
+        }
+    }
+
+    // Check portals
+    for (let i = editorObjects.portals.length - 1; i >= 0; i--) {
+        const pPos = new THREE.Vector3(editorObjects.portals[i].position.x, editorObjects.portals[i].position.y, editorObjects.portals[i].position.z);
+        if (pPos.distanceTo(pos) < threshold) {
+            // Remove both portals in the pair
+            const portal = editorObjects.portals[i];
+            const linked = portal.linkedPortal;
+
+            scene.remove(portal.mesh);
+            editorObjects.portals.splice(i, 1);
+
+            if (linked) {
+                const linkedIndex = editorObjects.portals.indexOf(linked);
+                if (linkedIndex !== -1) {
+                    scene.remove(linked.mesh);
+                    editorObjects.portals.splice(linkedIndex, 1);
+                }
+            }
             return;
         }
     }
@@ -1280,6 +1563,11 @@ document.getElementById('btn-clear').addEventListener('click', clearAllRamps);
 document.getElementById('btn-camera').addEventListener('click', resetCamera);
 document.getElementById('btn-next').addEventListener('click', nextLevel);
 function resetBall() {
+    // If testing, stop test mode instead of just resetting
+    if (testModeState.isTesting) {
+        stopTesting();
+        return;
+    }
     gameState.isPlaying = false;
     isOrbiting = false;
     groundContactTime = 0;
@@ -1664,15 +1952,56 @@ function checkCollisions() {
         }
     });
 
-    // Check booster collisions
+    // Check booster collisions (speed pads)
     editorObjects.boosters.forEach(booster => {
-        const boosterPos = new THREE.Vector3(booster.position.x, booster.position.y, booster.position.z);
+        const boosterPos = new THREE.Vector3(booster.center.x, booster.center.y, booster.center.z);
         const dist = ballPos.distanceTo(boosterPos);
-        if (dist < 1.5) {
-            // Apply boost force
-            ballBody.velocity.x += booster.direction.x * booster.strength * 0.5;
-            ballBody.velocity.y += booster.direction.y * booster.strength * 0.5;
-            ballBody.velocity.z += booster.direction.z * booster.strength * 0.5;
+
+        // Check if ball is on the pad
+        if (dist < booster.length / 2 + 0.5) {
+            const heightDiff = Math.abs(ballPos.y - boosterPos.y);
+            if (heightDiff < 1) {
+                // Apply gentle speed boost in pad direction
+                const boostAmount = 0.5;
+                ballBody.velocity.x += booster.direction.x * boostAmount;
+                ballBody.velocity.y += booster.direction.y * boostAmount;
+            }
+        }
+    });
+
+    // Check portal collisions
+    editorObjects.portals.forEach(portal => {
+        if (!portal.linkedPortal) return;
+
+        const portalPos = new THREE.Vector3(portal.position.x, portal.position.y, portal.position.z);
+        const dist = ballPos.distanceTo(portalPos);
+
+        if (dist < 0.8 && !portal.justExited) {
+            // Teleport to linked portal
+            const exitPos = portal.linkedPortal.position;
+            ballBody.position.set(exitPos.x, exitPos.y, exitPos.z);
+
+            // Mark exit portal to prevent immediate re-teleport
+            portal.linkedPortal.justExited = true;
+            setTimeout(() => {
+                portal.linkedPortal.justExited = false;
+            }, 500);
+
+            // Play teleport sound
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } catch (e) { }
         }
     });
 
@@ -1756,6 +2085,11 @@ function animate() {
         }
     });
 
+    // Animate portals
+    editorObjects.portals.forEach((portal) => {
+        portal.mesh.rotation.z += 0.02;
+    });
+
     // Check collisions
     checkCollisions();
 
@@ -1804,9 +2138,12 @@ document.getElementById('btn-editor').addEventListener('click', () => {
     if (editorState.isEditorMode) {
         document.querySelector('.instructions').innerHTML =
             '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects';
+        updateToolIndicator(editorState.currentTool);
     } else {
         document.querySelector('.instructions').innerHTML =
             '<strong>Click and drag</strong> to place ramps • <strong>Scroll</strong> to zoom • <strong>Right-drag</strong> to rotate view';
+        clearGhostPreview();
+        document.getElementById('tool-indicator').classList.remove('visible');
     }
 });
 
@@ -1816,6 +2153,18 @@ document.querySelectorAll('[data-editor-tool]').forEach(btn => {
         document.querySelectorAll('[data-editor-tool]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         editorState.currentTool = btn.dataset.editorTool;
+
+        // Reset portal placement state when switching tools
+        if (btn.dataset.editorTool !== 'portal') {
+            previewState.portalPlacingFirst = true;
+            if (pendingPortal) {
+                scene.remove(pendingPortal.mesh);
+                pendingPortal = null;
+            }
+        }
+
+        clearGhostPreview();
+        updateToolIndicator(editorState.currentTool);
     });
 });
 
@@ -1886,6 +2235,56 @@ document.getElementById('btn-editor-mode').addEventListener('click', () => {
     document.querySelector('.instructions').innerHTML =
         '<strong>Editor Mode:</strong> Select a tool and click/drag to place objects • Export to save your level';
 });
+
+// Test mode - play level in editor
+document.getElementById('btn-test').addEventListener('click', () => {
+    if (!editorState.isEditorMode) return;
+
+    // Save current state
+    testModeState.savedLevelCode = generateLevelCode();
+    testModeState.isTesting = true;
+
+    // Hide test button, show stop button
+    document.getElementById('btn-test').classList.add('hidden');
+    document.getElementById('btn-stop').classList.remove('hidden');
+
+    // Start the ball
+    gameState.isPlaying = true;
+    isFollowing = true;
+    isTransitioningToFollow = true;
+    orbitAngle = Math.atan2(camera.position.x - ball.position.x, camera.position.z - ball.position.z);
+    ballBody.type = CANNON.Body.DYNAMIC;
+    ballBody.wakeUp();
+    controls.enabled = false;
+
+    clearGhostPreview();
+    document.getElementById('tool-indicator').classList.remove('visible');
+
+    showToast('Testing level... Click stop to return to editing');
+});
+
+// Stop testing
+document.getElementById('btn-stop').addEventListener('click', () => {
+    stopTesting();
+});
+
+function stopTesting() {
+    if (!testModeState.isTesting) return;
+
+    testModeState.isTesting = false;
+
+    // Show test button, hide stop button
+    document.getElementById('btn-test').classList.remove('hidden');
+    document.getElementById('btn-stop').classList.add('hidden');
+
+    // Restore level from saved state
+    if (testModeState.savedLevelCode) {
+        loadLevelFromCode(testModeState.savedLevelCode);
+    }
+
+    resetBall();
+    updateToolIndicator(editorState.currentTool);
+}
 
 // Initialize
 async function init() {

@@ -22,7 +22,11 @@
                 </div>
                 <div class="level-display" id="level-display">Level 1</div>
             </div>
-
+            <!-- Current Tool Indicator -->
+            <div class="tool-indicator" id="tool-indicator">
+                <span class="tool-indicator-icon" id="tool-indicator-icon">⭐</span>
+                <span class="tool-indicator-name" id="tool-indicator-name">Star</span>
+            </div>
             <!-- Toolbar -->
             <div class="toolbar">
                 <button class="tool-btn active" data-tool="ramp">
@@ -56,10 +60,27 @@
                     <span class="tooltip">Place Wall (drag)</span>
                 </button>
                 <button class="tool-btn" data-editor-tool="booster">
-                    <svg viewBox="0 0 24 24" stroke="var(--accent-blue)" fill="none">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-width="2" />
+                    <svg viewBox="0 0 24 24" stroke="url(#rainbow-gradient)" fill="none">
+                        <defs>
+                            <linearGradient id="rainbow-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:#ff0000" />
+                                <stop offset="25%" style="stop-color:#ffff00" />
+                                <stop offset="50%" style="stop-color:#00ff00" />
+                                <stop offset="75%" style="stop-color:#00ffff" />
+                                <stop offset="100%" style="stop-color:#ff00ff" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="3" y="10" width="18" height="4" rx="1" stroke-width="2" />
                     </svg>
-                    <span class="tooltip">Place Booster (drag direction)</span>
+                    <span class="tooltip">Speed Boost Pad (drag)</span>
+                </button>
+                <button class="tool-btn" data-editor-tool="portal">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-purple)" fill="none">
+                        <circle cx="8" cy="12" r="5" stroke-width="2" />
+                        <circle cx="16" cy="12" r="5" stroke-width="2" />
+                        <path d="M11 10l2 2-2 2" stroke-width="2" />
+                    </svg>
+                    <span class="tooltip">Portal Pair (place 2)</span>
                 </button>
                 <button class="tool-btn" data-editor-tool="spike">
                     <svg viewBox="0 0 24 24" stroke="var(--accent-pink)" fill="var(--accent-pink)">
@@ -83,6 +104,16 @@
                 <button class="action-btn btn-import" id="btn-import" title="Import Level">
                     <svg viewBox="0 0 24 24" stroke="white" fill="none">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-width="2" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-test" id="btn-test" title="Test Level">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
+                        <polygon points="5 3 19 12 5 21 5 3" fill="white" />
+                    </svg>
+                </button>
+                <button class="action-btn btn-stop hidden" id="btn-stop" title="Stop Testing">
+                    <svg viewBox="0 0 24 24" stroke="white" fill="white">
+                        <rect x="6" y="6" width="12" height="12" />
                     </svg>
                 </button>
             </div>
