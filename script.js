@@ -232,6 +232,15 @@ const trailSpacing = 0.1; // Minimum distance between trail points
 
 // Star burst particles
 const burstParticles = [];
+// Landing dust particles
+const dustParticles = [];
+// Confetti particles
+const confettiParticles = [];
+
+// Squash and stretch state
+let lastBallVelocityY = 0;
+let ballSquashAmount = 1;
+let ballStretchAmount = 1;
 
 function playCollisionSound(impactVelocity) {
     const now = Date.now();
@@ -1950,6 +1959,15 @@ function resetBall() {
     }
     burstParticles.length = 0;
 
+    // Clear confetti
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+        const particle = confettiParticles[i];
+        scene.remove(particle);
+        particle.geometry.dispose();
+        particle.material.dispose();
+    }
+    confettiParticles.length = 0;
+
     cameraLookTarget = null;
     cameraTargetPos = null;
 
@@ -2283,10 +2301,184 @@ function updateBurstParticles(delta) {
         }
     }
 }
+
+function spawnLandingDust(position, intensity) {
+    const particleCount = Math.floor(3 + intensity * 2);
+
+    for (let i = 0; i < particleCount; i++) {
+        const size = 0.1 + Math.random() * 0.15;
+        const geometry = new THREE.SphereGeometry(size, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xdddddd,
+            transparent: true,
+            opacity: 0.6
+        });
+
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.set(
+            position.x + (Math.random() - 0.5) * 0.5,
+            position.y,
+            position.z + (Math.random() - 0.5) * 0.5
+        );
+
+        // Radial outward velocity
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 3 * intensity;
+        particle.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * speed,
+            1 + Math.random() * 2,
+            Math.sin(angle) * speed
+        );
+        particle.userData.life = 1.0;
+        particle.userData.fadeSpeed = 1.5 + Math.random();
+
+        scene.add(particle);
+        dustParticles.push(particle);
+    }
+}
+
+function updateDustParticles(delta) {
+    for (let i = dustParticles.length - 1; i >= 0; i--) {
+        const particle = dustParticles[i];
+
+        particle.userData.life -= delta * particle.userData.fadeSpeed;
+        particle.material.opacity = particle.userData.life * 0.6;
+
+        // Expand as it fades
+        const scale = 1 + (1 - particle.userData.life) * 2;
+        particle.scale.setScalar(scale);
+
+        // Apply velocity with drag
+        particle.position.x += particle.userData.velocity.x * delta;
+        particle.position.y += particle.userData.velocity.y * delta;
+        particle.position.z += particle.userData.velocity.z * delta;
+
+        // Slow down
+        particle.userData.velocity.multiplyScalar(0.95);
+        particle.userData.velocity.y -= 5 * delta; // gravity
+
+        if (particle.userData.life <= 0) {
+            scene.remove(particle);
+            particle.geometry.dispose();
+            particle.material.dispose();
+            dustParticles.splice(i, 1);
+        }
+    }
+}
+function spawnConfetti() {
+    const colors = [0xff2d55, 0xff9500, 0xffcc00, 0x34c759, 0x007aff, 0xaf52de];
+    const particleCount = 80;
+
+    for (let i = 0; i < particleCount; i++) {
+        // Random confetti shape (rectangle)
+        const width = 0.15 + Math.random() * 0.15;
+        const height = 0.3 + Math.random() * 0.2;
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const material = new THREE.MeshBasicMaterial({
+            color: colors[Math.floor(Math.random() * colors.length)],
+            transparent: true,
+            opacity: 1,
+            side: THREE.DoubleSide
+        });
+
+        const particle = new THREE.Mesh(geometry, material);
+
+        // Start from bowl area, spread upward
+        particle.position.set(
+            bowlPosition.x + (Math.random() - 0.5) * 4,
+            bowlPosition.y + 2,
+            bowlPosition.z + (Math.random() - 0.5) * 4
+        );
+
+        // Explosion velocity
+        const angle = Math.random() * Math.PI * 2;
+        const upward = 8 + Math.random() * 12;
+        const outward = 3 + Math.random() * 5;
+
+        particle.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * outward,
+            upward,
+            Math.sin(angle) * outward
+        );
+        particle.userData.rotationSpeed = new THREE.Vector3(
+            (Math.random() - 0.5) * 10,
+            (Math.random() - 0.5) * 10,
+            (Math.random() - 0.5) * 10
+        );
+        particle.userData.life = 1.0;
+        particle.userData.flutter = Math.random() * Math.PI * 2; // phase offset for flutter
+
+        scene.add(particle);
+        confettiParticles.push(particle);
+    }
+
+    // Play celebration sound
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Fanfare-like sound
+        [523, 659, 784].forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = freq;
+            osc.type = 'triangle';
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime + i * 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.4);
+            osc.start(audioCtx.currentTime + i * 0.1);
+            osc.stop(audioCtx.currentTime + i * 0.1 + 0.4);
+        });
+    } catch (e) { }
+}
+
+function updateConfetti(delta) {
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+        const particle = confettiParticles[i];
+
+        // Flutter effect
+        particle.userData.flutter += delta * 5;
+        const flutter = Math.sin(particle.userData.flutter) * 2;
+
+        // Apply velocity
+        particle.position.x += (particle.userData.velocity.x + flutter * 0.3) * delta;
+        particle.position.y += particle.userData.velocity.y * delta;
+        particle.position.z += particle.userData.velocity.z * delta;
+
+        // Gravity and air resistance
+        particle.userData.velocity.y -= 15 * delta;
+        particle.userData.velocity.x *= 0.99;
+        particle.userData.velocity.z *= 0.99;
+
+        // Tumbling rotation
+        particle.rotation.x += particle.userData.rotationSpeed.x * delta;
+        particle.rotation.y += particle.userData.rotationSpeed.y * delta;
+        particle.rotation.z += particle.userData.rotationSpeed.z * delta;
+
+        // Fade after a while
+        if (particle.position.y < bowlPosition.y - 2) {
+            particle.userData.life -= delta * 2;
+            particle.material.opacity = particle.userData.life;
+        }
+
+        // Remove when dead or fallen too far
+        if (particle.userData.life <= 0 || particle.position.y < -20) {
+            scene.remove(particle);
+            particle.geometry.dispose();
+            particle.material.dispose();
+            confettiParticles.splice(i, 1);
+        }
+    }
+}
 function showWinModal() {
     completeLevel(gameState.level);
-    const modal = document.getElementById('win-modal');
-    modal.classList.add('active');
+    spawnConfetti();
+
+    // Delay modal slightly so confetti is visible first
+    setTimeout(() => {
+        const modal = document.getElementById('win-modal');
+        modal.classList.add('active');
+    }, 300);
 }
 
 // Check collisions
@@ -2417,14 +2609,26 @@ function animate() {
     // Update physics with actual frame time
     world.step(delta);
 
-    // Sync ball mesh to physics body
     if (ball && ballBody) {
         ball.position.set(ballBody.position.x, ballBody.position.y, ballBody.position.z);
         ball.quaternion.set(ballBody.quaternion.x, ballBody.quaternion.y, ballBody.quaternion.z, ballBody.quaternion.w);
+
+        // Landing dust (without squash)
+        const velY = ballBody.velocity.y;
+        const justLanded = lastBallVelocityY < -5 && velY > lastBallVelocityY + 3;
+        if (justLanded) {
+            const intensity = Math.min(1, Math.abs(lastBallVelocityY) / 15);
+            if (intensity > 0.3) {
+                spawnLandingDust(ball.position, intensity);
+            }
+        }
+        lastBallVelocityY = velY;
         // Update ball trail
         // updateTrail();
         // Update burst particles
         updateBurstParticles(delta);
+        updateDustParticles(delta);
+        updateConfetti(delta);
     }
 
     // Animate stars
