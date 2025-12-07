@@ -27,21 +27,13 @@
                 <span class="tool-indicator-icon" id="tool-indicator-icon">⭐</span>
                 <span class="tool-indicator-name" id="tool-indicator-name">Star</span>
             </div>
-            <!-- Toolbar -->
-            <div class="toolbar">
-                <button class="tool-btn active" data-tool="ramp">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M3 20L21 4M3 20h18M3 20V4" />
-                    </svg>
-                    <span class="tooltip">Ramp (drag to place)</span>
-                </button>
-            </div>
+
 
             <!-- Editor Toolbar (after existing toolbar) -->
             <div class="editor-toolbar" id="editor-toolbar" style="display: none;">
-                <div class="editor-title">Level Editor</div>
+                <!-- <div class="editor-title">Level Editor</div> -->
                 <button class="tool-btn active" data-editor-tool="select">
-                    <svg viewBox="0 0 24 24" stroke="var(--text-primary)" fill="none">
+                    <svg viewBox="0 0 24 24" width="18" height="18">
                         <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" stroke-width="2" stroke-linejoin="round" />
                         <path d="M13 13l6 6" stroke-width="2" stroke-linecap="round" />
                     </svg>
@@ -125,53 +117,59 @@
                 </button>
             </div>
 
-            <!-- Actions -->
-            <div class="actions">
-                <button class="action-btn btn-play" id="btn-play" title="Drop Ball">
+            <!-- Bottom Control Bar -->
+            <div class="bottom-bar" id="bottom-bar">
+                <button class="bottom-btn active" data-tool="ramp" title="Place Ramp">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 20L21 4M3 20h18M3 20V4" />
+                    </svg>
+                </button>
+
+                <div class="divider"></div>
+
+                <button class="bottom-btn play-btn" id="btn-play" title="Drop Ball">
                     <svg viewBox="0 0 24 24">
                         <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
                 </button>
-                <button class="action-btn btn-reset" id="btn-reset" title="Reset Ball">
+
+                <button class="bottom-btn" id="btn-reset" title="Reset">
                     <svg viewBox="0 0 24 24">
                         <path d="M1 4v6h6M23 20v-6h-6" />
                         <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
                     </svg>
                 </button>
-                <button class="action-btn btn-clear" id="btn-clear" title="Clear All Ramps">
-                    <svg viewBox="0 0 24 24">
+
+                <button class="bottom-btn" id="btn-clear" title="Clear Ramps">
+                    <svg viewBox="0 0 24 24" stroke="var(--accent-pink)">
                         <line x1="18" y1="6" x2="6" y2="18" />
                         <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                 </button>
-                <button class="action-btn btn-camera" id="btn-camera" title="Reset Camera">
+
+                <div class="divider"></div>
+
+                <button class="bottom-btn" id="btn-camera" title="Reset Camera">
                     <svg viewBox="0 0 24 24">
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                         <circle cx="12" cy="13" r="4" />
                     </svg>
                 </button>
 
-                <button class="action-btn btn-menu" id="btn-menu" title="Back to Menu">
-                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke-width="2" />
-                        <polyline points="9 22 9 12 15 12 15 22" stroke-width="2" />
+                <button class="bottom-btn" id="btn-menu" title="Menu">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                        <polyline points="9 22 9 12 15 12 15 22" />
                     </svg>
                 </button>
 
-                <button class="action-btn btn-editor" id="btn-editor" title="Toggle Editor">
-                    <svg viewBox="0 0 24 24" stroke="white" fill="none">
-                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-width="2" />
-                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-width="2" />
+                <button class="bottom-btn" id="btn-editor" title="Editor">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                     </svg>
                 </button>
             </div>
-
-            <!-- Instructions -->
-            <div class="instructions">
-                <strong>Click and drag</strong> to place ramps • <strong>Scroll</strong> to zoom •
-                <strong>Right-drag</strong> to rotate view • Collect all ⭐ and guide the ball to the bowl!
-            </div>
-
             <!-- Preview info -->
             <div class="preview-info" id="preview-info">
                 Drag to set angle • Release to place

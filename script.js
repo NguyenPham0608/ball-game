@@ -2303,59 +2303,214 @@ function updateBurstParticles(delta) {
 }
 
 function spawnLandingDust(position, intensity) {
-    const particleCount = Math.floor(3 + intensity * 2);
+    // More particles for bigger impacts
+    const particleCount = Math.floor(1 + intensity * 15);
 
+    // Dust cloud colors - warm grays and tans
+    const dustColors = [0xd4cfc4, 0xccc5b9, 0xb8b0a0, 0xe0d8cc];
+
+    // Main dust puffs - 3D lit particles
     for (let i = 0; i < particleCount; i++) {
-        const size = 0.1 + Math.random() * 0.15;
-        const geometry = new THREE.SphereGeometry(size, 8, 8);
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xdddddd,
+        const size = 0.12 + Math.random() * 0.2 * intensity;
+        const geometry = new THREE.SphereGeometry(size, 12, 12);
+        const material = new THREE.MeshStandardMaterial({
+            color: dustColors[Math.floor(Math.random() * dustColors.length)],
             transparent: true,
-            opacity: 0.6
+            opacity: 0.6 + Math.random() * 0.3,
+            roughness: 1.0,
+            metalness: 0.0
         });
 
         const particle = new THREE.Mesh(geometry, material);
+
+        // Spawn in a 3D sphere around impact point
+        const spawnRadius = 0.2 + Math.random() * 0.5;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI * 0.5; // Hemisphere (upward)
         particle.position.set(
-            position.x + (Math.random() - 0.5) * 0.5,
-            position.y,
-            position.z + (Math.random() - 0.5) * 0.5
+            position.x + Math.cos(theta) * Math.sin(phi) * spawnRadius,
+            position.y - 0.2 + Math.cos(phi) * spawnRadius * 0.3,
+            position.z + Math.sin(theta) * Math.sin(phi) * spawnRadius
         );
 
-        // Radial outward velocity
+        // Radial outward velocity in 3D
         const angle = Math.random() * Math.PI * 2;
-        const speed = 2 + Math.random() * 3 * intensity;
+        const elevation = Math.random() * 0.5; // Slight upward bias
+        const speed = (2 + Math.random() * 4) * intensity;
+
         particle.userData.velocity = new THREE.Vector3(
-            Math.cos(angle) * speed,
-            1 + Math.random() * 2,
-            Math.sin(angle) * speed
+            Math.cos(angle) * speed * (0.8 + Math.random() * 0.4),
+            (0.5 + elevation + Math.random() * 2) * intensity,
+            Math.sin(angle) * speed * (0.8 + Math.random() * 0.4)
         );
         particle.userData.life = 1.0;
-        particle.userData.fadeSpeed = 1.5 + Math.random();
+        particle.userData.fadeSpeed = 0.6 + Math.random() * 0.5;
+        particle.userData.growthRate = 2 + Math.random() * 2.5;
+        particle.userData.initialScale = 0.4 + Math.random() * 0.6;
+        particle.userData.rotationSpeed = new THREE.Vector3(
+            (Math.random() - 0.5) * 3,
+            (Math.random() - 0.5) * 3,
+            (Math.random() - 0.5) * 3
+        );
+        particle.scale.setScalar(particle.userData.initialScale);
+        particle.castShadow = true;
 
         scene.add(particle);
         dustParticles.push(particle);
     }
-}
 
+    // Add chunky debris that tumbles
+    const debrisCount = Math.floor(4 + intensity * 6);
+    for (let i = 0; i < debrisCount; i++) {
+        // Use irregular shapes - boxes and tetrahedrons
+        let geometry;
+        if (Math.random() > 0.5) {
+            const s = 0.05 + Math.random() * 0.08;
+            geometry = new THREE.BoxGeometry(s, s * (0.5 + Math.random()), s * (0.5 + Math.random()));
+        } else {
+            geometry = new THREE.TetrahedronGeometry(0.04 + Math.random() * 0.06);
+        }
+
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x8a8070,
+            transparent: true,
+            opacity: 0.9,
+            roughness: 0.9,
+            metalness: 0.1
+        });
+
+        const debris = new THREE.Mesh(geometry, material);
+        debris.position.set(
+            position.x + (Math.random() - 0.5) * 0.4,
+            position.y - 0.1,
+            position.z + (Math.random() - 0.5) * 0.4
+        );
+
+        // Random initial rotation
+        debris.rotation.set(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+        );
+
+        const angle = Math.random() * Math.PI * 2;
+        const speed = (4 + Math.random() * 6) * intensity;
+        debris.userData.velocity = new THREE.Vector3(
+            Math.cos(angle) * speed,
+            3 + Math.random() * 5 * intensity,
+            Math.sin(angle) * speed
+        );
+        debris.userData.rotationSpeed = new THREE.Vector3(
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15,
+            (Math.random() - 0.5) * 15
+        );
+        debris.userData.life = 1.0;
+        debris.userData.fadeSpeed = 1.5 + Math.random();
+        debris.userData.isDebris = true;
+        debris.userData.gravity = -25 - Math.random() * 10;
+        debris.castShadow = true;
+
+        scene.add(debris);
+        dustParticles.push(debris);
+    }
+
+    // Ground impact ring (keep this 2D, it's meant to be flat)
+    const ringGeometry = new THREE.RingGeometry(0.1, 0.25, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xc4beb3,
+        transparent: true,
+        opacity: 0.35 * intensity,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.set(position.x, position.y - 0.48, position.z);
+    ring.rotation.x = -Math.PI / 2;
+    ring.userData.isRing = true;
+    ring.userData.life = 1.0;
+    ring.userData.expandSpeed = 5 + intensity * 4;
+    scene.add(ring);
+    dustParticles.push(ring);
+}
 function updateDustParticles(delta) {
     for (let i = dustParticles.length - 1; i >= 0; i--) {
         const particle = dustParticles[i];
 
+        // Handle expanding ring
+        if (particle.userData.isRing) {
+            particle.userData.life -= delta * 2;
+            particle.material.opacity = particle.userData.life * 0.35;
+
+            const expandAmount = particle.userData.expandSpeed * delta;
+            particle.scale.x += expandAmount;
+            particle.scale.y += expandAmount;
+
+            if (particle.userData.life <= 0) {
+                scene.remove(particle);
+                particle.geometry.dispose();
+                particle.material.dispose();
+                dustParticles.splice(i, 1);
+            }
+            continue;
+        }
+
+        // Handle tumbling debris
+        if (particle.userData.isDebris) {
+            particle.userData.life -= delta * particle.userData.fadeSpeed;
+            particle.material.opacity = Math.max(0, particle.userData.life * 0.9);
+
+            // Move
+            particle.position.x += particle.userData.velocity.x * delta;
+            particle.position.y += particle.userData.velocity.y * delta;
+            particle.position.z += particle.userData.velocity.z * delta;
+
+            // Tumble rotation
+            particle.rotation.x += particle.userData.rotationSpeed.x * delta;
+            particle.rotation.y += particle.userData.rotationSpeed.y * delta;
+            particle.rotation.z += particle.userData.rotationSpeed.z * delta;
+
+            // Gravity and drag
+            particle.userData.velocity.y += particle.userData.gravity * delta;
+            particle.userData.velocity.x *= 0.99;
+            particle.userData.velocity.z *= 0.99;
+
+            // Slow rotation over time
+            particle.userData.rotationSpeed.multiplyScalar(0.995);
+
+            if (particle.userData.life <= 0 || particle.position.y < -15) {
+                scene.remove(particle);
+                particle.geometry.dispose();
+                particle.material.dispose();
+                dustParticles.splice(i, 1);
+            }
+            continue;
+        }
+
+        // Regular dust puffs
         particle.userData.life -= delta * particle.userData.fadeSpeed;
-        particle.material.opacity = particle.userData.life * 0.6;
+        particle.material.opacity = Math.max(0, particle.userData.life * 0.7);
 
-        // Expand as it fades
-        const scale = 1 + (1 - particle.userData.life) * 2;
-        particle.scale.setScalar(scale);
+        // Expand as it fades (cloud-like behavior)
+        if (particle.userData.growthRate) {
+            const growth = 1 + (1 - particle.userData.life) * particle.userData.growthRate;
+            particle.scale.setScalar(particle.userData.initialScale * growth);
+        }
 
-        // Apply velocity with drag
+        // Apply velocity
         particle.position.x += particle.userData.velocity.x * delta;
         particle.position.y += particle.userData.velocity.y * delta;
         particle.position.z += particle.userData.velocity.z * delta;
 
-        // Slow down
-        particle.userData.velocity.multiplyScalar(0.95);
-        particle.userData.velocity.y -= 5 * delta; // gravity
+        // Rotate for more 3D feel
+        if (particle.userData.rotationSpeed) {
+            particle.rotation.x += particle.userData.rotationSpeed.x * delta;
+            particle.rotation.y += particle.userData.rotationSpeed.y * delta;
+            particle.rotation.z += particle.userData.rotationSpeed.z * delta;
+        }
+
+        // Heavy drag - dust floats and settles
+        particle.userData.velocity.multiplyScalar(0.94);
+        particle.userData.velocity.y -= 3 * delta;
 
         if (particle.userData.life <= 0) {
             scene.remove(particle);
