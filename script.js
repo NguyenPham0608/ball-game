@@ -63,6 +63,40 @@ const toolInfo = {
     delete: { icon: '🗑️', name: 'Delete' }
 };
 
+// Cached DOM elements for performance
+const domCache = {
+    starCount: null,
+    levelDisplay: null,
+    previewInfo: null,
+    winModal: null,
+    toolIndicator: null,
+    toolIndicatorIcon: null,
+    toolIndicatorName: null,
+    editorToolbar: null,
+    btnEditor: null,
+    btnTest: null,
+    btnStop: null,
+    lockedToast: null,
+    menuOverlay: null,
+    levelsGrid: null
+};
+
+function initDOMCache() {
+    domCache.starCount = document.getElementById('star-count');
+    domCache.levelDisplay = document.getElementById('level-display');
+    domCache.previewInfo = document.getElementById('preview-info');
+    domCache.winModal = document.getElementById('win-modal');
+    domCache.toolIndicator = document.getElementById('tool-indicator');
+    domCache.toolIndicatorIcon = document.getElementById('tool-indicator-icon');
+    domCache.toolIndicatorName = document.getElementById('tool-indicator-name');
+    domCache.editorToolbar = document.getElementById('editor-toolbar');
+    domCache.btnEditor = document.getElementById('btn-editor');
+    domCache.btnTest = document.getElementById('btn-test');
+    domCache.btnStop = document.getElementById('btn-stop');
+    domCache.lockedToast = document.getElementById('locked-toast');
+    domCache.menuOverlay = document.getElementById('menu-overlay');
+    domCache.levelsGrid = document.getElementById('levels-grid');
+}
 // Menu State
 const menuState = {
     levels: [],
@@ -110,7 +144,7 @@ STAR:0,-6,0`
 
 // Render level select menu
 function renderLevelMenu() {
-    const grid = document.getElementById('levels-grid');
+    const grid = domCache.levelsGrid;
     grid.innerHTML = '';
 
     menuState.levels.forEach((level, index) => {
@@ -139,40 +173,33 @@ function renderLevelMenu() {
 // Handle level selection
 function handleLevelSelect(levelNum, isUnlocked, cardElement) {
     if (!isUnlocked) {
-        // Shake the card
         cardElement.classList.add('shake');
         setTimeout(() => cardElement.classList.remove('shake'), 500);
-
-        // Show toast
         showToast('🔒 Complete the previous level first!');
         return;
     }
 
-    // Load the level
     gameState.level = levelNum;
     const levelData = menuState.levels[levelNum - 1];
     if (levelData) {
         loadLevelFromCode(levelData.code);
     }
-    document.getElementById('level-display').textContent = `Level ${levelNum}`;
-
-    // Hide menu
-    document.getElementById('menu-overlay').classList.add('hidden');
+    domCache.levelDisplay.textContent = `Level ${levelNum}`;
+    domCache.menuOverlay.classList.add('hidden');
 }
 
 // Show toast message
 function showToast(message) {
-    const toast = document.getElementById('locked-toast');
-    toast.textContent = message;
-    toast.classList.add('visible');
-    setTimeout(() => toast.classList.remove('visible'), 2000);
+    domCache.lockedToast.textContent = message;
+    domCache.lockedToast.classList.add('visible');
+    setTimeout(() => domCache.lockedToast.classList.remove('visible'), 2000);
 }
 
 // Show menu
 function showMenu() {
     updateMaxUnlocked();
     renderLevelMenu();
-    document.getElementById('menu-overlay').classList.remove('hidden');
+    domCache.menuOverlay.classList.remove('hidden');
 }
 
 // Mark level as completed
@@ -313,6 +340,8 @@ directionalLight.shadow.camera.left = -20;
 directionalLight.shadow.camera.right = 20;
 directionalLight.shadow.camera.top = 20;
 directionalLight.shadow.camera.bottom = -20;
+directionalLight.shadow.autoUpdate = false;
+directionalLight.shadow.needsUpdate = true;
 scene.add(directionalLight);
 
 const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
@@ -663,8 +692,10 @@ function createStar(position, index) {
 
     gameState.starObjects.push({ mesh: starGroup, body: starBody, collected: false });
 }
-
+let sharedGlowTexture = null;
 function createGlowTexture() {
+    if (sharedGlowTexture) return sharedGlowTexture;
+
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
@@ -678,8 +709,8 @@ function createGlowTexture() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
+    sharedGlowTexture = new THREE.CanvasTexture(canvas);
+    return sharedGlowTexture;
 }
 
 // Create wall
@@ -981,21 +1012,16 @@ function clearGhostPreview() {
 
 // Update tool indicator
 function updateToolIndicator(tool) {
-    const indicator = document.getElementById('tool-indicator');
-    const icon = document.getElementById('tool-indicator-icon');
-    const name = document.getElementById('tool-indicator-name');
-
     if (editorState.isEditorMode && toolInfo[tool]) {
-        indicator.classList.add('visible');
-        icon.textContent = toolInfo[tool].icon;
-        name.textContent = toolInfo[tool].name;
+        domCache.toolIndicator.classList.add('visible');
+        domCache.toolIndicatorIcon.textContent = toolInfo[tool].icon;
+        domCache.toolIndicatorName.textContent = toolInfo[tool].name;
 
-        // Show portal state
         if (tool === 'portal') {
-            name.textContent = previewState.portalPlacingFirst ? 'Portal A (Orange)' : 'Portal B (Blue)';
+            domCache.toolIndicatorName.textContent = previewState.portalPlacingFirst ? 'Portal A (Orange)' : 'Portal B (Blue)';
         }
     } else {
-        indicator.classList.remove('visible');
+        domCache.toolIndicator.classList.remove('visible');
     }
 }
 // Create spike at exact position (for loading levels)
@@ -1189,6 +1215,7 @@ function loadLevelFromCode(code) {
     });
 
     resetBall();
+    directionalLight.shadow.needsUpdate = true;
 }
 // Create ramp from saved data
 function createRampFromData(data) {
@@ -1816,11 +1843,17 @@ function restoreObjectMaterial(obj) {
         mesh.userData.isHighlighted = false;
     }
 }
-
+let lastMoveTime = 0;
+const moveThrottleMs = 16;
 function onMouseMove(event) {
+    const now = performance.now();
+    if (now - lastMoveTime < moveThrottleMs && !gameState.isDragging && !selectionState.isDraggingObject) {
+        return;
+    }
+    lastMoveTime = now;
+
     const pos = getWorldPosition(event);
 
-    // Check if we've dragged far enough to count as a drag
     if (selectionState.mouseDownPos) {
         const dragDist = pos.distanceTo(selectionState.mouseDownPos);
         if (dragDist > 0.3) {
@@ -1828,14 +1861,12 @@ function onMouseMove(event) {
         }
     }
 
-    // Handle object dragging in select mode
     if (editorState.isEditorMode && selectionState.isDraggingObject && selectionState.selectedObject) {
         const newPos = pos.clone().add(selectionState.dragOffset);
         updateObjectPosition(selectionState.selectedObject, newPos);
         return;
     }
 
-    // Update ghost preview in editor mode (only for placement tools, not select)
     if (editorState.isEditorMode && !gameState.isDragging && !selectionState.isDraggingObject) {
         const tool = editorState.currentTool;
         if (['star', 'bowl', 'spike', 'portal', 'delete'].includes(tool)) {
@@ -1982,6 +2013,8 @@ function resetBall() {
     // Ease camera back to original position
     easeCameraToStart();
     controls.enabled = true;
+    directionalLight.shadow.needsUpdate = true;
+
 }
 
 function easeCameraToStart() {
@@ -2098,7 +2131,7 @@ async function nextLevel() {
 }
 
 function updateStarDisplay() {
-    document.getElementById('star-count').textContent = `${gameState.stars} / ${gameState.totalStars}`;
+    domCache.starCount.textContent = `${gameState.stars} / ${gameState.totalStars}`;
 }
 
 function showStarCollectAnimation(position) {
@@ -2629,10 +2662,8 @@ function showWinModal() {
     completeLevel(gameState.level);
     spawnConfetti();
 
-    // Delay modal slightly so confetti is visible first
     setTimeout(() => {
-        const modal = document.getElementById('win-modal');
-        modal.classList.add('active');
+        domCache.winModal.classList.add('active');
     }, 300);
 }
 
@@ -2640,62 +2671,68 @@ function showWinModal() {
 function checkCollisions() {
     if (!gameState.isPlaying) return;
 
-    const ballPos = new THREE.Vector3(
-        ballBody.position.x,
-        ballBody.position.y,
-        ballBody.position.z
-    );
+    const ballX = ballBody.position.x;
+    const ballY = ballBody.position.y;
+    const ballZ = ballBody.position.z;
 
-    // Check star collisions
-    gameState.starObjects.forEach(star => {
-        if (star.collected) return;
+    // Check star collisions using squared distance
+    for (let i = 0; i < gameState.starObjects.length; i++) {
+        const star = gameState.starObjects[i];
+        if (star.collected) continue;
 
-        const dist = ballPos.distanceTo(star.mesh.position);
-        if (dist < 1) {
+        const pos = star.mesh.position;
+        const dx = ballX - pos.x;
+        const dy = ballY - pos.y;
+        const dz = ballZ - pos.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq < 1) {
             star.collected = true;
             star.mesh.visible = false;
             gameState.stars++;
             updateStarDisplay();
-            showStarCollectAnimation(star.mesh.position);
+            showStarCollectAnimation(pos);
         }
-    });
+    }
 
-    // Check booster collisions (speed pads)
-    editorObjects.boosters.forEach(booster => {
-        const boosterPos = new THREE.Vector3(booster.center.x, booster.center.y, booster.center.z);
-        const dist = ballPos.distanceTo(boosterPos);
+    // Check booster collisions
+    for (let i = 0; i < editorObjects.boosters.length; i++) {
+        const booster = editorObjects.boosters[i];
+        const dx = ballX - booster.center.x;
+        const dy = ballY - booster.center.y;
+        const dz = ballZ - booster.center.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        const threshold = booster.length / 2 + 0.5;
 
-        // Check if ball is on the pad
-        if (dist < booster.length / 2 + 0.5) {
-            const heightDiff = Math.abs(ballPos.y - boosterPos.y);
+        if (distSq < threshold * threshold) {
+            const heightDiff = Math.abs(dy);
             if (heightDiff < 1) {
-                // Apply gentle speed boost in pad direction
                 const boostAmount = 0.5;
                 ballBody.velocity.x += booster.direction.x * boostAmount;
                 ballBody.velocity.y += booster.direction.y * boostAmount;
             }
         }
-    });
+    }
 
     // Check portal collisions
-    editorObjects.portals.forEach(portal => {
-        if (!portal.linkedPortal) return;
+    for (let i = 0; i < editorObjects.portals.length; i++) {
+        const portal = editorObjects.portals[i];
+        if (!portal.linkedPortal) continue;
 
-        const portalPos = new THREE.Vector3(portal.position.x, portal.position.y, portal.position.z);
-        const dist = ballPos.distanceTo(portalPos);
+        const dx = ballX - portal.position.x;
+        const dy = ballY - portal.position.y;
+        const dz = ballZ - portal.position.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
 
-        if (dist < 0.8 && !portal.justExited) {
-            // Teleport to linked portal
+        if (distSq < 0.64 && !portal.justExited) {
             const exitPos = portal.linkedPortal.position;
             ballBody.position.set(exitPos.x, exitPos.y, exitPos.z);
 
-            // Mark exit portal to prevent immediate re-teleport
             portal.linkedPortal.justExited = true;
             setTimeout(() => {
                 portal.linkedPortal.justExited = false;
             }, 500);
 
-            // Play teleport sound
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
@@ -2711,28 +2748,35 @@ function checkCollisions() {
                 oscillator.stop(audioCtx.currentTime + 0.2);
             } catch (e) { }
         }
-    });
+    }
 
     // Check spike collisions
-    editorObjects.spikes.forEach(spike => {
-        const spikePos = new THREE.Vector3(spike.position.x, spike.position.y, spike.position.z);
-        const dist = ballPos.distanceTo(spikePos);
-        if (dist < 0.8) {
-            // Hit spike - reset
+    for (let i = 0; i < editorObjects.spikes.length; i++) {
+        const spike = editorObjects.spikes[i];
+        const dx = ballX - spike.position.x;
+        const dy = ballY - spike.position.y;
+        const dz = ballZ - spike.position.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq < 0.64) {
             resetBall();
             return;
         }
-    });
+    }
 
     // Check bowl collision
-    const bowlDist = ballPos.distanceTo(bowlPosition);
-    if (bowlDist < 2 && ballPos.y < bowlPosition.y + 1) {
+    const bowlDx = ballX - bowlPosition.x;
+    const bowlDy = ballY - bowlPosition.y;
+    const bowlDz = ballZ - bowlPosition.z;
+    const bowlDistSq = bowlDx * bowlDx + bowlDy * bowlDy + bowlDz * bowlDz;
+
+    if (bowlDistSq < 4 && ballY < bowlPosition.y + 1) {
         gameState.isPlaying = false;
         setTimeout(showWinModal, 500);
     }
 
     // Check if ball fell below ground
-    if (ballPos.y < -15) {
+    if (ballY < -15) {
         resetBall();
     }
 }
@@ -2786,24 +2830,31 @@ function animate() {
         updateConfetti(delta);
     }
 
-    // Animate stars
-    gameState.starObjects.forEach((star, i) => {
-        if (!star.collected) {
-            star.mesh.rotation.y += 0.02;
-            star.mesh.position.y += Math.sin(Date.now() * 0.003 + i) * 0.002;
+    // Animate stars - cached time values
+    const animTime = Date.now();
+    const timeFast = animTime * 0.003;
+    const timeSlow = animTime * 0.005;
 
-            // Pulsing glow effect
-            const pulse = 0.4 + Math.sin(Date.now() * 0.005 + i * 0.5) * 0.2;
-            if (star.mesh.userData.light) {
-                star.mesh.userData.light.intensity = 1.5 + pulse;
-            }
-            if (star.mesh.userData.glow) {
-                star.mesh.userData.glow.material.opacity = 0.4 + pulse * 0.4;
-                const glowScale = 2.5 + pulse;
-                star.mesh.userData.glow.scale.set(glowScale, glowScale, 1);
-            }
+    for (let i = 0; i < gameState.starObjects.length; i++) {
+        const star = gameState.starObjects[i];
+        if (star.collected) continue;
+
+        star.mesh.rotation.y += 0.02;
+        star.mesh.position.y += Math.sin(timeFast + i) * 0.002;
+
+        const pulse = 0.4 + Math.sin(timeSlow + i * 0.5) * 0.2;
+        const light = star.mesh.userData.light;
+        const glow = star.mesh.userData.glow;
+
+        if (light) {
+            light.intensity = 1.5 + pulse;
         }
-    });
+        if (glow) {
+            glow.material.opacity = 0.4 + pulse * 0.4;
+            const glowScale = 2.5 + pulse;
+            glow.scale.set(glowScale, glowScale, 1);
+        }
+    }
 
     // Animate portals
     editorObjects.portals.forEach((portal) => {
@@ -3075,13 +3126,12 @@ function stopTesting() {
 
 // Initialize
 async function init() {
+    initDOMCache();
     createBall();
     createBowl();
 
-    // Load all level data for menu
     await loadAllLevelData();
 
-    // Show menu on start
     showMenu();
 
     animate();
