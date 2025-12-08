@@ -1440,15 +1440,16 @@ function onMouseDown(event) {
                     pos
                 );
                 controls.enabled = false;
-                return;
             } else {
-                // Restore material when deselecting
-                restoreObjectMaterial(selectionState.selectedObject);
-                selectionState.selectedObject = null;
+                // Clicked empty space - deselect
+                if (selectionState.selectedObject) {
+                    restoreObjectMaterial(selectionState.selectedObject);
+                    selectionState.selectedObject = null;
+                }
                 selectionState.isDraggingObject = false;
                 controls.enabled = true;
-                return;
             }
+            return;
         }
 
         // Delete tool
@@ -1622,9 +1623,8 @@ function handlePortalPlacement(pos) {
 }
 
 // Pick object at position for selection
-// Pick object at position for selection
 function pickObjectAt(pos) {
-    const threshold = 1.5;
+    const threshold = 1.0;
     let closest = null;
     let closestDist = threshold;
 
@@ -1717,9 +1717,9 @@ function pickObjectAt(pos) {
         }
     }
 
-    // Check bowl (larger threshold)
+    // Check bowl
     const bowlDist = bowl.position.distanceTo(pos);
-    if (bowlDist < 3 && bowlDist < closestDist + 1.5) {
+    if (bowlDist < 2.5 && bowlDist < closestDist) {
         closest = { type: 'bowl', mesh: bowl, data: { position: bowlPosition } };
     }
 
@@ -1894,8 +1894,11 @@ function onMouseUp(event) {
     // Handle select mode drag end
     if (selectionState.isDraggingObject) {
         selectionState.isDraggingObject = false;
-        // Keep the object selected after dragging
         selectionState.mouseDownPos = null;
+        // Only keep selected if we actually dragged
+        if (!selectionState.hasDragged) {
+            // It was just a click, keep selection but don't treat as drag
+        }
         controls.enabled = true;
         return;
     }
@@ -2861,27 +2864,27 @@ function animate() {
         portal.mesh.rotation.z += 0.02;
     });
 
-    // Highlight selected object (yellow tint)
+    // Highlight selected object (yellow tint) - only apply once when selected
     if (editorState.isEditorMode && selectionState.selectedObject && selectionState.selectedObject.mesh) {
         const mesh = selectionState.selectedObject.mesh;
 
-        // Store original material if not stored
-        if (!mesh.userData.originalMaterial) {
-            if (mesh.material) {
-                mesh.userData.originalMaterial = mesh.material.clone();
-            } else if (mesh.children) {
-                mesh.userData.originalMaterials = [];
-                mesh.traverse((child) => {
-                    if (child.isMesh && child.material) {
-                        mesh.userData.originalMaterials.push({ mesh: child, material: child.material.clone() });
-                    }
-                });
-            }
-            mesh.userData.isHighlighted = false;
-        }
-
-        // Apply yellow highlight
+        // Only process if not already highlighted
         if (!mesh.userData.isHighlighted) {
+            // Store original material if not stored
+            if (!mesh.userData.originalMaterial && !mesh.userData.originalMaterials) {
+                if (mesh.material) {
+                    mesh.userData.originalMaterial = mesh.material.clone();
+                } else if (mesh.children) {
+                    mesh.userData.originalMaterials = [];
+                    mesh.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            mesh.userData.originalMaterials.push({ mesh: child, material: child.material.clone() });
+                        }
+                    });
+                }
+            }
+
+            // Apply yellow highlight
             if (mesh.material) {
                 mesh.material = new THREE.MeshStandardMaterial({
                     color: 0xffdd00,
@@ -2893,12 +2896,15 @@ function animate() {
             } else if (mesh.children) {
                 mesh.traverse((child) => {
                     if (child.isMesh) {
+                        // Preserve double-sided property for bowls/cylinders
+                        const isDoubleSided = child.material && child.material.side === THREE.DoubleSide;
                         child.material = new THREE.MeshStandardMaterial({
                             color: 0xffdd00,
                             emissive: 0xffdd00,
                             emissiveIntensity: 0.3,
                             roughness: 0.3,
-                            metalness: 0.5
+                            metalness: 0.5,
+                            side: isDoubleSided ? THREE.DoubleSide : THREE.FrontSide
                         });
                     }
                 });
