@@ -3,6 +3,33 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import * as CANNON from 'cannon-es';
 
+// Rounded box geometry helper
+function createRoundedBoxGeometry(width, height, depth, radius, segments = 4) {
+    const shape = new THREE.Shape();
+    const w = width / 2 - radius;
+    const h = height / 2 - radius;
+
+    shape.moveTo(-w, -height / 2);
+    shape.lineTo(w, -height / 2);
+    shape.quadraticCurveTo(width / 2, -height / 2, width / 2, -h);
+    shape.lineTo(width / 2, h);
+    shape.quadraticCurveTo(width / 2, height / 2, w, height / 2);
+    shape.lineTo(-w, height / 2);
+    shape.quadraticCurveTo(-width / 2, height / 2, -width / 2, h);
+    shape.lineTo(-width / 2, -h);
+    shape.quadraticCurveTo(-width / 2, -height / 2, -w, -height / 2);
+
+    const extrudeSettings = {
+        depth: depth,
+        bevelEnabled: false,
+        curveSegments: segments
+    };
+
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    geometry.center();
+    return geometry;
+}
+
 // Game State
 const gameState = {
     stars: 0,
@@ -723,8 +750,8 @@ function createWall(start, end) {
 
     const center = startVec.clone().add(endVec).multiplyScalar(0.5);
 
-    // Visual
-    const geometry = new THREE.BoxGeometry(length, 0.5, 1);
+    // Visual - same rounded style as ramps but grey
+    const geometry = createRoundedBoxGeometry(length, 0.3, 2, 0.15);
     const material = new THREE.MeshStandardMaterial({
         color: 0x8e8e93,
         roughness: 0.3,
@@ -739,7 +766,7 @@ function createWall(start, end) {
     scene.add(mesh);
 
     // Physics
-    const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.25, 0.5));
+    const shape = new CANNON.Box(new CANNON.Vec3(length / 2, 0.15, 1));
     const body = new CANNON.Body({ mass: 0, material: groundMaterial });
     body.addShape(shape);
     body.position.copy(center);
@@ -1220,7 +1247,7 @@ function loadLevelFromCode(code) {
 // Create ramp from saved data
 function createRampFromData(data) {
     const length = data.length;
-    const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+    const geometry = createRoundedBoxGeometry(length, 0.3, 2, 0.15);
     const material = new THREE.MeshStandardMaterial({
         color: 0xaf52de,
         roughness: 0.4,
@@ -1326,7 +1353,7 @@ function createRamp(start, end, type = 'ramp') {
     return null;
 }
 function createRampMesh(length, center, direction) {
-    const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+    const geometry = createRoundedBoxGeometry(length, 0.3, 2, 0.15);
     const material = new THREE.MeshStandardMaterial({
         color: 0xaf52de,
         roughness: 0.4,
@@ -1374,7 +1401,7 @@ function updatePreview(start, end) {
 
     const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
 
-    const geometry = new THREE.BoxGeometry(length, 0.2, 2);
+    const geometry = createRoundedBoxGeometry(length, 0.3, 2, 0.15);
     const material = new THREE.MeshStandardMaterial({
         color: 0xaf52de,
         transparent: true,
